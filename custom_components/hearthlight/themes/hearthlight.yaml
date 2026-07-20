@@ -3,6 +3,15 @@
 # Generated from the HearthLight Design System (claude.ai/design)
 # Brand: Ember Orange #fc7114 · Slate #253540 · warm Sand light surfaces
 # Auto light/dark via modes; devices follow their own appearance.
+#
+# Two-tier coverage: legacy vars serve frontends ≥ 2025.8; the
+# --ha-color-* token scales feed the 2026.x semantic + Web Awesome
+# layers (older frontends silently ignore them, and vice versa).
+# Deliberate exceptions kept at HA defaults: the 54-color history-chart
+# palette (--color-1..54, pending a DS data-viz palette), animation
+# durations (theme vars are inline styles and would defeat HA's
+# prefers-reduced-motion override), and dark CodeMirror syntax colors.
+# Fonts stay device-native by design.
 # ─────────────────────────────────────────────────────────────────────
 HearthLight:
   # ── Brand ──
@@ -11,7 +20,71 @@ HearthLight:
   accent-color: "#f5a623"                 # glow-amber
   rgb-accent-color: "245, 166, 35"
   dark-primary-color: "#bf4b08"           # ember-700
+  darker-primary-color: "#963c0d"         # ember-800
   light-primary-color: "#ffa264"          # ember-300
+  text-light-primary-color: "#1b2831"     # slate-900 on ember-300
+
+  # ── Core token scales (HA 2026 base tier) ──
+  # The whole semantic layer (--ha-color-fill/border/on/surface/form/
+  # text-*) and the --wa-* Web Awesome bridge derive from these scales,
+  # in both modes — set once here, shared. 05 = darkest … 95 = lightest.
+  ha-color-primary-05: "#4a1f09"          # ember-950
+  ha-color-primary-10: "#79330f"          # ember-900
+  ha-color-primary-20: "#963c0d"          # ember-800
+  ha-color-primary-30: "#bf4b08"          # ember-700
+  ha-color-primary-40: "#e85d0a"          # ember-600 (AA on light)
+  ha-color-primary-50: "#fc7114"          # ember-500
+  ha-color-primary-60: "#fd8838"          # ember-400
+  ha-color-primary-70: "#ffa264"          # ember-300
+  ha-color-primary-80: "#ffc59b"          # ember-200
+  ha-color-primary-90: "#ffe3cf"          # ember-100
+  ha-color-primary-95: "#fff4ec"          # ember-50
+  ha-color-neutral-05: "#121c23"          # slate-950
+  ha-color-neutral-10: "#1b2831"          # slate-900
+  ha-color-neutral-20: "#253540"          # slate-800
+  ha-color-neutral-30: "#324551"          # slate-700
+  ha-color-neutral-40: "#3f5360"          # slate-600
+  ha-color-neutral-50: "#546b78"          # slate-500
+  ha-color-neutral-60: "#748b98"          # slate-400
+  ha-color-neutral-70: "#9fb1bb"          # slate-300
+  ha-color-neutral-80: "#c5d1d7"          # slate-200
+  ha-color-neutral-90: "#e0e7ea"          # slate-100
+  ha-color-neutral-95: "#eef2f4"          # slate-50
+  ha-color-red-05: "#2e0d07"
+  ha-color-red-10: "#48150b"
+  ha-color-red-20: "#6e2112"
+  ha-color-red-30: "#922c17"
+  ha-color-red-40: "#b6371d"              # red-600
+  ha-color-red-50: "#d8492b"              # red-500
+  ha-color-red-60: "#e56b50"
+  ha-color-red-70: "#f3937c"              # dark alert-text
+  ha-color-red-80: "#f6b7a7"
+  ha-color-red-90: "#fbdcd4"              # red-100
+  ha-color-red-95: "#fdeeea"
+  ha-color-orange-05: "#2a1c01"
+  ha-color-orange-10: "#422d01"
+  ha-color-orange-20: "#684802"
+  ha-color-orange-30: "#8f6303"
+  ha-color-orange-40: "#b67f04"           # amber-600
+  ha-color-orange-50: "#e0a106"           # amber-500
+  ha-color-orange-60: "#efb51f"
+  ha-color-orange-70: "#ffce63"           # glow-honey
+  ha-color-orange-80: "#fede9c"
+  ha-color-orange-90: "#fdeccb"           # amber-100
+  ha-color-orange-95: "#fef6e3"
+  ha-color-green-05: "#041e12"
+  ha-color-green-10: "#072f1d"
+  ha-color-green-20: "#0c4a2e"
+  ha-color-green-30: "#11663f"
+  ha-color-green-40: "#16804f"            # green-600
+  ha-color-green-50: "#1f9d63"            # green-500
+  ha-color-green-60: "#3cba7f"
+  ha-color-green-70: "#6fd6a3"            # dark ok-text
+  ha-color-green-80: "#a8e3c2"
+  ha-color-green-90: "#d3efe0"            # green-100
+  ha-color-green-95: "#e9f7f0"
+  ha-color-black: "#0c1216"               # DS black (dark surface-lower)
+  ha-color-white: "#ffffff"
 
   # ── Status (solid hues, shared) ──
   success-color: "#1f9d63"
@@ -23,18 +96,65 @@ HearthLight:
   info-color: "#3a86b8"
   rgb-info-color: "58, 134, 184"
 
-  # ── Shape (radii tokens) ──
+  # ── Named palette (cascades into ~80 --state-* domain colors,
+  #    label colors, and --state-active-color). Pickers named "purple",
+  #    "cyan", etc. render these HearthLight-harmonized hues. ──
+  red-color: "#d8492b"                    # red-500
+  green-color: "#1f9d63"                  # green-500
+  amber-color: "#f5a623"                  # glow-amber (state-active glow)
+  yellow-color: "#ffce63"                 # glow-honey
+  orange-color: "#fc7114"                 # ember-500
+  deep-orange-color: "#e85d0a"            # ember-600
+  blue-color: "#3a86b8"                   # blue-500
+  grey-color: "#748b98"                   # slate-400
+  light-grey-color: "#c5d1d7"             # slate-200
+  dark-grey-color: "#3f5360"              # slate-600
+  blue-grey-color: "#546b78"              # slate-500
+  black-color: "#0c1216"                  # DS black
+  white-color: "#ffffff"
+  pink-color: "#d8628c"                   # accent-pink
+  purple-color: "#9a6fb8"                 # accent-purple
+  deep-purple-color: "#7a55a0"            # accent-deep-purple
+  indigo-color: "#56679f"                 # accent-indigo
+  light-blue-color: "#5da3cd"             # accent-sky
+  cyan-color: "#3fa8bf"                   # accent-cyan
+  teal-color: "#2f9488"                   # accent-teal
+  light-green-color: "#7ab55c"            # accent-leaf
+  lime-color: "#b5c94d"                   # accent-lime
+  brown-color: "#8a6a52"                  # accent-brown
+
+  # ── Shape (radii & border tokens) ──
   ha-card-border-radius: "16px"           # --radius-lg: cards
   ha-dialog-border-radius: "22px"         # --radius-xl: panels/sheets
   ha-card-border-width: "1px"
   mdc-shape-small: "8px"                  # --radius-sm
   mdc-shape-medium: "12px"                # --radius-md: default controls
   mdc-shape-large: "16px"
+  # 2026 radius scale, mapped by role (HA names sit one step off DS
+  # names). 3xl drives --wa-panel-border-radius → dialogs/panels match
+  # the legacy 22px above. pill keeps HA's 9999px (≡ DS 999px, safer
+  # on tall elements).
+  ha-border-radius-square: "0"
+  ha-border-radius-sm: "4px"              # --radius-xs
+  ha-border-radius-md: "8px"              # --radius-sm
+  ha-border-radius-lg: "12px"             # --radius-md
+  ha-border-radius-xl: "16px"             # --radius-lg
+  ha-border-radius-2xl: "20px"            # HA default (no DS step)
+  ha-border-radius-3xl: "22px"            # --radius-xl: panels/sheets
+  ha-border-radius-4xl: "28px"            # HA default (no DS step)
+  ha-border-radius-5xl: "32px"            # --radius-2xl
+  ha-border-radius-6xl: "36px"            # HA default (no DS step)
+  ha-border-radius-pill: "9999px"
+  ha-border-radius-circle: "50%"
+  ha-border-width-sm: "1px"
+  ha-border-width-md: "2px"
+  ha-border-width-lg: "3px"
 
   # ── Type (device-native system fonts; Cocon Pro display reserved for v2) ──
   ha-font-family-body: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
   ha-font-family-heading: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
   ha-font-family-code: 'ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace'
+  ha-font-family-longform: "ui-sans-serif, system-ui, sans-serif"
   mdc-typography-font-family: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
   paper-font-common-base_-_font-family: 'ui-sans-serif, system-ui, sans-serif'
   paper-font-body1_-_font-family: 'ui-sans-serif, system-ui, sans-serif'
@@ -58,6 +178,8 @@ HearthLight:
   slider-color: "#fc7114"
 
   # ── Domain state colors (shared, from DS status semantics) ──
+  # Intentional deviations from the named-palette derivation: switch/
+  # fan/cover/climate-heat sit on ember, not amber/cyan/purple/deep-orange.
   state-light-active-color: "#f5a623"          # glow-amber: lit = warm glow
   state-switch-active-color: "#fc7114"
   state-fan-active-color: "#fc7114"
@@ -70,6 +192,22 @@ HearthLight:
   state-alarm-triggered-color: "#d8492b"
   state-person-home-color: "#1f9d63"
   state-binary_sensor-active-color: "#f5a623"
+  state-weather-snowy-color: "#d6e9f3"         # blue-100 (HA's lone literal)
+
+  # ── Energy dashboard (DS data-viz palette, seeded from this theme) ──
+  energy-grid-consumption-color: "#3a86b8"     # blue-500
+  energy-grid-return-color: "#9a6fb8"          # accent-purple
+  energy-solar-color: "#f5a623"                # glow-amber
+  energy-non-fossil-color: "#1f9d63"           # green-500
+  energy-battery-out-color: "#2f9488"          # accent-teal
+  energy-battery-in-color: "#d8628c"           # accent-pink
+  energy-gas-color: "#bf4b08"                  # ember-700
+  energy-water-color: "#3fa8bf"                # accent-cyan
+
+  # ── Misc chrome (shared) ──
+  label-badge-grey: "#748b98"             # slate-400
+  history-unavailable-color: "transparent"
+  ha-dialog-scrim-backdrop-filter: "brightness(68%)"
 
   modes:
     # ────────────────────── LIGHT (Sand + Slate) ──────────────────────
@@ -80,14 +218,27 @@ HearthLight:
       card-background-color: "#ffffff"         # surface-raised
       ha-card-background: "#ffffff"
       lovelace-background: "#faf7f2"
+      clear-background-color: "#faf7f2"
+      # Semantic surfaces & forms (sand warmth over the cool slate the
+      # neutral scale would otherwise derive)
+      ha-color-surface-low: "#faf7f2"          # sand-50
+      ha-color-surface-lower: "#f4eee4"        # sand-100
+      ha-color-form-background: "#f4eee4"      # sand-100
+      ha-color-form-background-hover: "#ece2d3" # sand-200
+      ha-color-form-background-disabled: "#faf7f2"
       # Text
       primary-text-color: "#253540"            # text-body (slate-800)
       secondary-text-color: "#546b78"          # text-muted (slate-500)
       text-primary-color: "#ffffff"            # text-on-brand
       disabled-text-color: "#748b98"           # text-subtle (slate-400)
+      disabled-color: "#9fb1bb"                # slate-300
+      ha-color-text-primary: "#1b2831"         # text-strong (slate-900)
+      ha-color-text-secondary: "#546b78"       # text-muted (slate-500)
       # Borders & lines
       divider-color: "#e0e7ea"                 # border-subtle (slate-100)
       ha-card-border-color: "#e0e7ea"
+      outline-color: "#c5d1d7"                 # border-default (slate-200)
+      outline-hover-color: "#9fb1bb"           # border-strong (slate-300)
       # Header & sidebar
       app-header-background-color: "#faf7f2"
       app-header-text-color: "#1b2831"
@@ -96,8 +247,15 @@ HearthLight:
       sidebar-icon-color: "#748b98"
       sidebar-selected-icon-color: "#e85d0a"   # text-brand (ember-600, AA)
       sidebar-selected-text-color: "#e85d0a"
-      # Cards & elevation (shadow-sm, warm slate tint)
+      # Elevation (warm slate-tinted shadows)
       ha-card-box-shadow: "0 1px 3px rgba(18, 28, 35, 0.08), 0 1px 2px rgba(18, 28, 35, 0.05)"
+      ha-box-shadow-s: "0 1px 3px rgba(18, 28, 35, 0.08), 0 1px 2px rgba(18, 28, 35, 0.05)"
+      ha-box-shadow-m: "0 4px 12px rgba(18, 28, 35, 0.08), 0 2px 4px rgba(18, 28, 35, 0.05)"
+      ha-box-shadow-l: "0 14px 34px rgba(18, 28, 35, 0.12), 0 4px 10px rgba(18, 28, 35, 0.06)"
+      shadow-color: "rgba(18, 28, 35, 0.16)"
+      mdc-dialog-scrim-color: "rgba(18, 28, 35, 0.45)"  # DS scrim
+      # Focus ring (ember)
+      ha-color-focus: "color-mix(in oklab, #fc7114 55%, transparent)"
       # Icons & states
       state-icon-color: "#546b78"
       paper-item-icon-color: "#546b78"
@@ -118,6 +276,10 @@ HearthLight:
       input-dropdown-icon-color: "#546b78"
       input-disabled-ink-color: "#9fb1bb"
       input-disabled-fill-color: "#faf7f2"
+      input-disabled-line-color: "#e0e7ea"     # border-subtle
+      input-outlined-idle-border-color: "#c5d1d7"
+      input-outlined-hover-border-color: "#9fb1bb"
+      input-outlined-disabled-border-color: "#e0e7ea"
       # Tables, code, chrome
       table-row-background-color: "#ffffff"
       table-row-alternative-background-color: "#faf7f2"
@@ -129,20 +291,28 @@ HearthLight:
 
     # ────────────────────── DARK (Slate depths) ───────────────────────
     dark:
-      # Surfaces
+      # Surfaces (semantic surface-default/low/lower and form-background
+      # derive from the neutral scale: slate-900 / slate-950 / DS black /
+      # slate-800 — no overrides needed here)
       primary-background-color: "#121c23"      # slate-950: surface-page
       secondary-background-color: "#0d161c"    # surface-sunken
       card-background-color: "#1b2831"         # slate-900: surface-raised
       ha-card-background: "#1b2831"
       lovelace-background: "#121c23"
+      clear-background-color: "#121c23"
       # Text
       primary-text-color: "#e0e7ea"            # text-body (slate-100)
       secondary-text-color: "#9fb1bb"          # text-muted (slate-300)
       text-primary-color: "#121c23"            # text-on-brand (dark)
       disabled-text-color: "#748b98"
+      disabled-color: "#3f5360"                # slate-600
+      ha-color-text-primary: "#f5f7f8"         # text-strong (slate-25)
+      ha-color-text-secondary: "#9fb1bb"       # text-muted (slate-300)
       # Borders & lines
       divider-color: "rgba(255, 255, 255, 0.12)"
       ha-card-border-color: "rgba(255, 255, 255, 0.06)"
+      outline-color: "rgba(255, 255, 255, 0.12)"      # border-default
+      outline-hover-color: "rgba(255, 255, 255, 0.22)" # border-strong
       # Header & sidebar
       app-header-background-color: "#121c23"
       app-header-text-color: "#f5f7f8"
@@ -151,13 +321,26 @@ HearthLight:
       sidebar-icon-color: "#748b98"
       sidebar-selected-icon-color: "#fd8838"   # text-brand (ember-400)
       sidebar-selected-text-color: "#fd8838"
-      # Cards & elevation (dark shadow-sm)
+      # Elevation (dark shadows stay black-based by design)
       ha-card-box-shadow: "0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3)"
+      ha-box-shadow-s: "0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3)"
+      ha-box-shadow-m: "0 6px 16px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35)"
+      ha-box-shadow-l: "0 18px 40px rgba(0, 0, 0, 0.55), 0 6px 14px rgba(0, 0, 0, 0.4)"
+      shadow-color: "rgba(0, 0, 0, 0.48)"
+      mdc-dialog-scrim-color: "rgba(5, 10, 13, 0.6)"   # DS scrim
+      # Focus ring (ember-400 reads on dark)
+      ha-color-focus: "color-mix(in oklab, #fd8838 60%, transparent)"
       # Icons & states
       state-icon-color: "#9fb1bb"
       paper-item-icon-color: "#9fb1bb"
       # Buttons & interactive
       mdc-theme-primary: "#fd8838"
+      mdc-ripple-color: "#9fb1bb"              # slate-300
+      mdc-linear-progress-buffer-color: "rgba(255, 255, 255, 0.12)"
+      ha-button-primary-light-color: "rgba(252, 113, 20, 0.14)"  # brand-soft
+      ha-button-warning-light-color: "rgba(224, 161, 6, 0.18)"   # warn-surface
+      ha-button-neutral-color: "#c5d1d7"       # slate-200
+      ha-button-neutral-light-color: "#3f5360" # slate-600
       # Switches & sliders
       switch-checked-track-color: "#bf4b08"    # ember-700
       switch-unchecked-button-color: "#9fb1bb"
@@ -173,6 +356,13 @@ HearthLight:
       input-dropdown-icon-color: "#9fb1bb"
       input-disabled-ink-color: "#546b78"
       input-disabled-fill-color: "#1b2831"
+      input-disabled-line-color: "rgba(255, 255, 255, 0.06)"
+      input-outlined-idle-border-color: "rgba(255, 255, 255, 0.12)"
+      input-outlined-hover-border-color: "rgba(255, 255, 255, 0.22)"
+      input-outlined-disabled-border-color: "rgba(255, 255, 255, 0.06)"
+      # Map & misc
+      map-filter: "invert(0.9) hue-rotate(170deg) brightness(1.5) contrast(1.2) saturate(0.3)"
+      energy-grid-return-color: "#b294cf"      # accent-purple, dark variant
       # Tables, code, chrome
       table-row-background-color: "#1b2831"
       table-row-alternative-background-color: "#121c23"
