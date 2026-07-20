@@ -4,6 +4,7 @@ The HearthLight design system as a Home Assistant integration: a warm, ember-and
 
 - **Theme** — Ember Orange `#fc7114` + Slate `#253540` with warm Sand light surfaces, automatic light/dark via `modes`, device-native system fonts.
 - **Default-theme management** — HearthLight is re-applied as the backend default (light + dark) on every Home Assistant start. No startup automation needed.
+- **Dashboard** — a ready-made HearthLight dashboard (Home, Spaces, System, Support) is created automatically and rebuilds itself from your areas and devices on every load.
 - **Brand card** — `custom:hearthlight-brand` inlines the HearthLight SVG marks and maps their colors to theme variables, so they adapt to light/dark exactly like text.
 - **Remote access control** — `custom:hearthlight-remote-access` plus per-user switch/number entities let the household grant a chosen user (e.g. a support account) remote login for a limited, self-expiring window.
 - **Served assets** — all brand SVGs are available under `/hearthlight/brand/` for picture cards, markdown, or anything else.
@@ -27,6 +28,32 @@ frontend:
 
 > [!IMPORTANT]
 > The integration owns `themes/hearthlight/hearthlight.yaml`. Local edits to that file are overwritten on every update — the theme's source of truth is this repository. To hand-manage the theme, turn off **Manage the theme file** in the integration options.
+
+## Dashboard
+
+The integration creates a ready-made **HearthLight** dashboard in the sidebar on setup (toggleable in options). Its entire stored config is one line — a pointer at the bundled `custom:hearthlight` strategy — so the layout is rebuilt from your areas, devices, and entities every time it loads, and improves with each release:
+
+- **Home** — brand header, weather, at-a-glance summaries (what's on, what's open or unlocked), and your busiest spaces.
+- **Spaces** — a section per area with tile cards grouped by kind: lights, switches, covers, climate, media, locks, temperature/humidity, openings and motion.
+- **System** — pending updates, low batteries, and system-health entities.
+- **Support** — HearthLight branding, the remote-access card(s), self-service actions (**Quick Fix** reloads all YAML configuration, **Reboot System** restarts Home Assistant — both are admin-only services), and call/email contact options (on devices that can't place calls, they copy the value to the clipboard).
+
+Navigation is a fixed bottom navbar (`custom:hearthlight-navbar`, injected into every view). While a remote-access window is active, a floating pill at the top center of every page shows a live countdown; tapping it opens the Support view.
+
+### Hiding things from the dashboard
+
+Create a label named exactly `hearthlight-exclude` (Settings → Areas, labels & zones → Labels) and apply it to any **area, device, or entity** to leave it out. Entities hidden in the registry are excluded automatically. Matching is by the label's id — the slug of its name at creation — so create it with that exact name rather than renaming another label.
+
+### Customizing or opting out
+
+The dashboard is only created when `/hearthlight-home` doesn't already exist, and its config is **never overwritten**. To customize the layout, take control in the dashboard's raw configuration editor (replace the strategy with concrete views) — HearthLight then leaves it alone forever, including on integration removal. A pristine, still-strategy dashboard is deleted when the integration is removed.
+
+If automatic creation fails, a Repair issue appears; create the dashboard manually via Settings → Dashboards → **Add dashboard**, then set its raw configuration to:
+
+```yaml
+strategy:
+  type: custom:hearthlight
+```
 
 ## Brand card
 
@@ -124,7 +151,8 @@ Settings → Devices & Services → HearthLight → **Configure**:
 |---|---|---|
 | Manage the theme file | on | Install/overwrite the theme on setup and updates |
 | Set HearthLight as the backend default theme | on | Re-apply on every HA start |
-| Register the card dashboard resource | on | Auto-register `hearthlight-brand-card.js` (both cards) |
+| Register the card dashboard resource | on | Auto-register `hearthlight-brand-card.js` (all cards + the dashboard strategy) |
+| Create the HearthLight dashboard | on | Create the `/hearthlight-home` strategy dashboard if it doesn't exist |
 | Remote access: managed users | none | Create remote-access entities for the selected users |
 | Provision the HearthLight Support user | off | Create and lifecycle-manage the vendor support account |
 
@@ -141,7 +169,7 @@ lovelace:
 
 ## Removal
 
-Deleting the integration removes the dashboard resource, deletes `themes/hearthlight/`, resets the backend default theme to Home Assistant's default, deletes the provisioned support user (if any), and restores *local only* login (ending active sessions) for every managed user — remote access never outlives the thing that time-boxes it.
+Deleting the integration removes the HearthLight dashboard (only if it was never customized), removes the dashboard resource, deletes `themes/hearthlight/`, resets the backend default theme to Home Assistant's default, deletes the provisioned support user (if any), and restores *local only* login (ending active sessions) for every managed user — remote access never outlives the thing that time-boxes it.
 
 ## License
 

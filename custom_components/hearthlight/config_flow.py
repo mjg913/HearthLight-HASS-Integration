@@ -16,6 +16,7 @@ from homeassistant.helpers.selector import (
 
 from . import support_user
 from .const import (
+    CONF_CREATE_DASHBOARD,
     CONF_MANAGE_THEME,
     CONF_MANAGED_USERS,
     CONF_PROVISION_SUPPORT_USER,
@@ -31,6 +32,7 @@ _BASE_OPTIONS = {
     vol.Required(CONF_MANAGE_THEME, default=True): BooleanSelector(),
     vol.Required(CONF_SET_DEFAULT_THEME, default=True): BooleanSelector(),
     vol.Required(CONF_REGISTER_CARD_RESOURCE, default=True): BooleanSelector(),
+    vol.Required(CONF_CREATE_DASHBOARD, default=True): BooleanSelector(),
     vol.Required(CONF_PROVISION_SUPPORT_USER, default=False): BooleanSelector(),
 }
 
@@ -52,6 +54,7 @@ class HearthLightConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_MANAGE_THEME: True,
                     CONF_SET_DEFAULT_THEME: True,
                     CONF_REGISTER_CARD_RESOURCE: True,
+                    CONF_CREATE_DASHBOARD: True,
                     CONF_MANAGED_USERS: [],
                     CONF_PROVISION_SUPPORT_USER: False,
                 },

@@ -866,3 +866,938 @@ window.customCards.push({
   preview: false,
   documentationURL: "https://github.com/mjg913/HearthLight-HASS-Integration",
 });
+
+/**
+ * The HearthLight dashboard — navbar, contact card, and dashboard strategy.
+ *
+ * The integration auto-creates a storage dashboard whose entire config is
+ * `strategy: {type: custom:hearthlight}`; the strategy below builds the
+ * actual Home / Spaces / System / Support layout client-side on every load,
+ * so new areas and devices appear without any stored config. Anything
+ * labeled `hearthlight-exclude` (area, device, or entity — matched by
+ * label id, i.e. the slugified name) is left out, as are registry-hidden
+ * entities.
+ */
+
+const HL_DASHBOARD_PATH = "hearthlight-home";
+const HL_VIEWS = [
+  { path: "home", label: "Home", icon: "mdi:home" },
+  { path: "spaces", label: "Spaces", icon: "mdi:sofa" },
+  { path: "system", label: "System", icon: "mdi:cog-outline" },
+  { path: "support", label: "Support", icon: "mdi:lifebuoy" },
+];
+const EXCLUDE_LABEL = "hearthlight-exclude";
+const CONTACT_PHONE_DISPLAY = "(720) 755-2012";
+const CONTACT_PHONE_TEL = "+17207552012";
+const CONTACT_EMAIL = "support@hearthlightintegration.com";
+
+function navigatePath(path) {
+  history.pushState(null, "", path);
+  window.dispatchEvent(new CustomEvent("location-changed"));
+}
+
+function hearthlightSwitchIds(hass) {
+  return Object.keys(hass?.entities ?? {}).filter(
+    (id) =>
+      id.startsWith("switch.") && hass.entities[id].platform === "hearthlight",
+  );
+}
+
+const isMobileDevice = () =>
+  navigator.userAgentData?.mobile ??
+  /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+
+/**
+ * hearthlight-navbar — fixed bottom navigation for the HearthLight
+ * dashboard, injected into every view by the strategy. Also owns the
+ * floating "support access active" pill: a fixed top-center chip shown on
+ * every page while any HearthLight remote-access switch is on (the full
+ * card lives only on the Support view). Tapping the pill opens Support.
+ */
+class HearthLightNavbar extends HTMLElement {
+  setConfig(config) {
+    this._config = config ?? {};
+    this._dashboard = this._config.dashboard ?? HL_DASHBOARD_PATH;
+    this._built = false;
+    this._render();
+  }
+
+  set hass(hass) {
+    const old = this._hass;
+    this._hass = hass;
+    if (!this._built) return;
+    const ids = hearthlightSwitchIds(hass);
+    if (!old || ids.some((id) => old.states[id] !== hass.states[id])) {
+      this._updatePill();
+    }
+  }
+
+  connectedCallback() {
+    this._onLocationChanged = this._onLocationChanged ?? (() => this._updateActive());
+    window.addEventListener("location-changed", this._onLocationChanged);
+    window.addEventListener("popstate", this._onLocationChanged);
+    if (this._config) this._render();
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener("location-changed", this._onLocationChanged);
+    window.removeEventListener("popstate", this._onLocationChanged);
+    this._stopPillTimer();
+  }
+
+  getCardSize() {
+    return 2;
+  }
+
+  static getStubConfig() {
+    return {};
+  }
+
+  _render() {
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    if (!this._built) this._build();
+    this._updateActive();
+    if (this._hass) this._updatePill();
+  }
+
+  _build() {
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host { display: block; }
+        .spacer { height: calc(72px + env(safe-area-inset-bottom)); }
+        nav {
+          position: fixed; left: 0; right: 0; bottom: 0; z-index: 4;
+          display: flex; justify-content: space-around; align-items: stretch;
+          padding-bottom: env(safe-area-inset-bottom);
+          background: var(--card-background-color, #fff);
+          border-top: 1px solid var(--divider-color);
+          box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.08);
+        }
+        nav button {
+          flex: 1; max-width: 168px; padding: 10px 0 12px;
+          display: flex; flex-direction: column; align-items: center; gap: 2px;
+          background: none; border: none; cursor: pointer;
+          color: var(--secondary-text-color); font: inherit;
+          font-size: 0.72em; font-weight: 500; letter-spacing: 0.02em;
+        }
+        nav button ha-icon { --mdc-icon-size: 24px; }
+        nav button.active { color: var(--primary-color, ${BRAND_EMBER}); }
+        /* Floating support-access pill: top center, above content but below
+           dialogs; only the pill itself accepts pointer events. */
+        .pill {
+          position: fixed; top: calc(var(--header-height, 56px) + 12px);
+          left: 50%; transform: translateX(-50%); z-index: 6;
+          display: none; align-items: center; gap: 8px;
+          padding: 8px 16px; border: none; border-radius: 999px;
+          background: ${BRAND_EMBER}; color: #fff; cursor: pointer;
+          font: inherit; font-size: 0.85em; font-weight: 600;
+          white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden;
+          box-shadow: 0 4px 16px rgba(252, 113, 20, 0.45);
+        }
+        .pill.shown { display: flex; }
+        .pill ha-icon { --mdc-icon-size: 18px; }
+        .dot {
+          width: 8px; height: 8px; border-radius: 50%; background: #fff;
+          flex: none; animation: hl-pulse 1.6s ease-in-out infinite;
+        }
+        @keyframes hl-pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.35; transform: scale(0.8); }
+        }
+        @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+      </style>
+      <button class="pill" aria-label="Support access is active — open the Support page">
+        <span class="dot"></span>
+        <ha-icon icon="mdi:headset"></ha-icon>
+        <span class="pill-text"></span>
+      </button>
+      <div class="spacer"></div>
+      <nav></nav>`;
+    const nav = this.shadowRoot.querySelector("nav");
+    for (const item of HL_VIEWS) {
+      const btn = document.createElement("button");
+      btn.dataset.path = item.path;
+      const icon = document.createElement("ha-icon");
+      icon.setAttribute("icon", item.icon);
+      const label = document.createElement("span");
+      label.textContent = item.label;
+      btn.append(icon, label);
+      btn.addEventListener("click", () =>
+        navigatePath(`/${this._dashboard}/${item.path}`),
+      );
+      nav.append(btn);
+    }
+    this._pill = this.shadowRoot.querySelector(".pill");
+    this._pillText = this.shadowRoot.querySelector(".pill-text");
+    this._pill.addEventListener("click", () =>
+      navigatePath(`/${this._dashboard}/support`),
+    );
+    this._built = true;
+  }
+
+  _updateActive() {
+    if (!this._built) return;
+    const [, dash, view] = window.location.pathname.split("/");
+    const active = dash === this._dashboard ? view || HL_VIEWS[0].path : null;
+    for (const btn of this.shadowRoot.querySelectorAll("nav button")) {
+      btn.classList.toggle("active", btn.dataset.path === active);
+    }
+  }
+
+  _updatePill() {
+    const hass = this._hass;
+    const active = hearthlightSwitchIds(hass).filter(
+      (id) => hass.states[id]?.state === "on",
+    );
+    this._activeCount = active.length;
+    if (!active.length) {
+      this._pill.classList.remove("shown");
+      this._pillExpires = null;
+      this._stopPillTimer();
+      return;
+    }
+    const expiries = active
+      .map((id) => new Date(hass.states[id].attributes.expires_at ?? NaN).getTime())
+      .filter((t) => !Number.isNaN(t));
+    this._pillExpires = expiries.length ? Math.max(...expiries) : null;
+    this._pill.classList.add("shown");
+    this._tickPill();
+    if (this._pillExpires && !this._pillTimer) {
+      this._pillTimer = setInterval(() => this._tickPill(), 1000);
+    } else if (!this._pillExpires) {
+      this._stopPillTimer();
+    }
+  }
+
+  _tickPill() {
+    let text = "Support access active";
+    if (this._pillExpires) {
+      const remaining = this._pillExpires - Date.now();
+      text =
+        remaining > 0
+          ? `Support access · ${formatRemaining(remaining)}`
+          : "Support access is ending…";
+    }
+    if (this._activeCount > 1) text += ` · ${this._activeCount} users`;
+    this._pillText.textContent = text;
+  }
+
+  _stopPillTimer() {
+    if (this._pillTimer) {
+      clearInterval(this._pillTimer);
+      this._pillTimer = null;
+    }
+  }
+}
+
+/**
+ * hearthlight-contact — call / email support. On devices that can place
+ * calls (mobile) the buttons open tel:/mailto:; elsewhere they copy the
+ * value to the clipboard with an inline confirmation, falling back to a
+ * toast when the clipboard is unavailable.
+ */
+class HearthLightContactCard extends HTMLElement {
+  setConfig(config) {
+    this._config = config ?? {};
+    this._built = false;
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass; // static content; nothing tracks state
+  }
+
+  connectedCallback() {
+    if (this._config) this._render();
+  }
+
+  disconnectedCallback() {
+    clearTimeout(this._phoneTimer);
+    clearTimeout(this._emailTimer);
+  }
+
+  getCardSize() {
+    return 2;
+  }
+
+  static getConfigElement() {
+    return document.createElement("hearthlight-contact-editor");
+  }
+
+  static getStubConfig() {
+    return {};
+  }
+
+  _render() {
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    if (this._built) return;
+    const config = this._config;
+    const title = config.title ?? "Contact us";
+    const rows = [];
+    if (config.show_phone !== false) {
+      rows.push({
+        kind: "phone",
+        icon: "mdi:phone",
+        name: "Call us",
+        detail: CONTACT_PHONE_DISPLAY,
+        timerKey: "_phoneTimer",
+      });
+    }
+    if (config.show_email !== false) {
+      rows.push({
+        kind: "email",
+        icon: "mdi:email-outline",
+        name: "Email us",
+        detail: CONTACT_EMAIL,
+        timerKey: "_emailTimer",
+      });
+    }
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host { display: block; }
+        ha-card { padding: 16px; }
+        .title {
+          font-size: 1.05em; font-weight: 600;
+          color: var(--primary-text-color);
+        }
+        .row {
+          display: flex; align-items: center; gap: 12px; width: 100%;
+          margin-top: 12px; padding: 10px 12px; cursor: pointer;
+          text-align: left; border: 1px solid var(--divider-color);
+          border-radius: var(--mdc-shape-medium, 12px);
+          background: none; color: inherit; font: inherit;
+        }
+        .row:hover { border-color: ${BRAND_EMBER}; }
+        .chip {
+          width: 40px; height: 40px; border-radius: 50%; flex: none;
+          display: flex; align-items: center; justify-content: center;
+          background: rgba(252, 113, 20, 0.12); color: ${BRAND_EMBER};
+        }
+        .chip ha-icon { --mdc-icon-size: 22px; }
+        .titles { flex: 1; min-width: 0; }
+        .name, .detail { display: block; }
+        .name { font-weight: 600; color: var(--primary-text-color); }
+        .detail {
+          margin-top: 2px; font-size: 0.85em;
+          color: var(--secondary-text-color);
+        }
+        .row.copied .chip {
+          background: rgba(var(--rgb-success-color, 31, 157, 99), 0.12);
+          color: var(--success-color, #1f9d63);
+        }
+        .row.copied .detail { color: var(--success-color, #1f9d63); }
+      </style>
+      <ha-card>
+        ${title ? `<div class="title">${escapeHtml(title)}</div>` : ""}
+      </ha-card>`;
+    const card = this.shadowRoot.querySelector("ha-card");
+    for (const row of rows) {
+      const btn = document.createElement("button");
+      btn.className = "row";
+      btn.innerHTML = `
+        <span class="chip"><ha-icon></ha-icon></span>
+        <span class="titles">
+          <span class="name"></span>
+          <span class="detail"></span>
+        </span>`;
+      btn.querySelector("ha-icon").setAttribute("icon", row.icon);
+      btn.querySelector(".name").textContent = row.name;
+      btn.querySelector(".detail").textContent = row.detail;
+      btn.addEventListener("click", () => this._activate(row, btn));
+      card.append(btn);
+    }
+    this._built = true;
+  }
+
+  async _activate(row, btn) {
+    if (isMobileDevice()) {
+      window.location.href =
+        row.kind === "phone"
+          ? `tel:${CONTACT_PHONE_TEL}`
+          : `mailto:${CONTACT_EMAIL}`;
+      return;
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(row.detail);
+        this._flashCopied(row, btn);
+        return;
+      } catch {
+        /* denied: fall through to the toast */
+      }
+    }
+    this.dispatchEvent(
+      new CustomEvent("hass-notification", {
+        detail: { message: `${row.name}: ${row.detail}` },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  _flashCopied(row, btn) {
+    const detail = btn.querySelector(".detail");
+    const icon = btn.querySelector("ha-icon");
+    btn.classList.add("copied");
+    detail.textContent = "Copied to clipboard";
+    icon.setAttribute("icon", "mdi:check");
+    clearTimeout(this[row.timerKey]);
+    this[row.timerKey] = setTimeout(() => {
+      btn.classList.remove("copied");
+      detail.textContent = row.detail;
+      icon.setAttribute("icon", row.icon);
+    }, 1600);
+  }
+}
+
+/** Visual editor for hearthlight-contact. */
+class HearthLightContactEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = config ?? {};
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (this._form) this._form.hass = hass;
+  }
+
+  _labels = {
+    title: "Title",
+    show_phone: "Show the call option",
+    show_email: "Show the email option",
+  };
+
+  _schema = [
+    { name: "title", selector: { text: {} } },
+    { name: "show_phone", selector: { boolean: {} } },
+    { name: "show_email", selector: { boolean: {} } },
+  ];
+
+  _render() {
+    if (!this._form) {
+      this._form = document.createElement("ha-form");
+      this._form.computeLabel = (s) => this._labels[s.name] ?? s.name;
+      this._form.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        this._onValueChanged(ev.detail.value);
+      });
+      this.append(this._form);
+    }
+    const c = this._config;
+    this._form.hass = this._hass;
+    this._form.data = {
+      title: c.title ?? "Contact us",
+      show_phone: c.show_phone ?? true,
+      show_email: c.show_email ?? true,
+    };
+    this._form.schema = this._schema;
+  }
+
+  _onValueChanged(value) {
+    const config = { ...this._config, ...value };
+    if (config.title === "Contact us") delete config.title;
+    if (config.show_phone !== false) delete config.show_phone;
+    if (config.show_email !== false) delete config.show_email;
+    this._config = config;
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+}
+
+if (!customElements.get("hearthlight-navbar")) {
+  customElements.define("hearthlight-navbar", HearthLightNavbar);
+}
+if (!customElements.get("hearthlight-contact")) {
+  customElements.define("hearthlight-contact", HearthLightContactCard);
+}
+if (!customElements.get("hearthlight-contact-editor")) {
+  customElements.define("hearthlight-contact-editor", HearthLightContactEditor);
+}
+
+window.customCards.push(
+  {
+    type: "hearthlight-navbar",
+    name: "HearthLight Navbar",
+    description: "Bottom navigation bar used by the HearthLight dashboard",
+    preview: false,
+    documentationURL: "https://github.com/mjg913/HearthLight-HASS-Integration",
+  },
+  {
+    type: "hearthlight-contact",
+    name: "HearthLight Contact",
+    description: "Call or email HearthLight support",
+    preview: true,
+    documentationURL: "https://github.com/mjg913/HearthLight-HASS-Integration",
+  },
+);
+
+/**
+ * The dashboard strategy. Builds the four views from the registry each
+ * time the dashboard loads; on HA 2026+ registryDependencies triggers a
+ * live rebuild when areas/devices/entities change (older frontends
+ * rebuild on the next load).
+ */
+
+const SPACES_DOMAIN_ORDER = [
+  "light",
+  "switch",
+  "cover",
+  "climate",
+  "fan",
+  "humidifier",
+  "media_player",
+  "lock",
+  "alarm_control_panel",
+];
+const SPACES_TILE_FEATURES = {
+  light: [{ type: "light-brightness" }],
+  cover: [{ type: "cover-open-close" }],
+  climate: [{ type: "target-temperature" }],
+};
+const SPACES_SENSOR_CLASSES = ["temperature", "humidity"];
+const SPACES_BINARY_CLASSES = [
+  "door",
+  "window",
+  "garage_door",
+  "opening",
+  "motion",
+  "occupancy",
+];
+const OPENING_CLASSES = ["door", "window", "garage_door", "opening", "lock"];
+
+function buildDashboardModel(hass) {
+  const excludedAreas = new Set(
+    Object.values(hass.areas ?? {})
+      .filter((area) => area.labels?.includes(EXCLUDE_LABEL))
+      .map((area) => area.area_id),
+  );
+  const excludedDevices = new Set(
+    Object.values(hass.devices ?? {})
+      .filter((device) => device.labels?.includes(EXCLUDE_LABEL))
+      .map((device) => device.id),
+  );
+  const flat = [];
+  const byArea = new Map();
+  for (const [id, entry] of Object.entries(hass.entities ?? {})) {
+    if (!hass.states[id]) continue; // disabled or not yet provided
+    if (entry.hidden) continue;
+    if (entry.platform === "hearthlight") continue; // Support view only
+    if (entry.labels?.includes(EXCLUDE_LABEL)) continue;
+    if (entry.device_id && excludedDevices.has(entry.device_id)) continue;
+    const areaId =
+      entry.area_id ??
+      (entry.device_id ? hass.devices[entry.device_id]?.area_id : null) ??
+      null;
+    if (areaId && excludedAreas.has(areaId)) continue;
+    flat.push({ id, areaId, category: entry.entity_category ?? null });
+    if (!entry.entity_category) {
+      if (!byArea.has(areaId)) byArea.set(areaId, []);
+      byArea.get(areaId).push(id);
+    }
+  }
+  return { flat, byArea };
+}
+
+function hlView(title, path, icon, sections) {
+  return { title, path, icon, type: "sections", max_columns: 4, sections };
+}
+
+function navbarSection() {
+  return {
+    type: "grid",
+    column_span: 4,
+    cards: [{ type: "custom:hearthlight-navbar" }],
+  };
+}
+
+function sortByFriendlyName(ids, hass) {
+  const name = (id) => hass.states[id]?.attributes?.friendly_name ?? id;
+  return [...ids].sort((a, b) => name(a).localeCompare(name(b)));
+}
+
+function buildAreaCards(ids, hass) {
+  const cards = [];
+  const domainOf = (id) => id.split(".")[0];
+  const deviceClass = (id) => hass.states[id]?.attributes?.device_class;
+  for (const domain of SPACES_DOMAIN_ORDER) {
+    for (const id of sortByFriendlyName(
+      ids.filter((id) => domainOf(id) === domain),
+      hass,
+    )) {
+      const card = { type: "tile", entity: id };
+      if (SPACES_TILE_FEATURES[domain]) {
+        card.features = SPACES_TILE_FEATURES[domain];
+      }
+      cards.push(card);
+    }
+  }
+  for (const id of sortByFriendlyName(
+    ids.filter(
+      (id) =>
+        domainOf(id) === "sensor" &&
+        SPACES_SENSOR_CLASSES.includes(deviceClass(id)),
+    ),
+    hass,
+  )) {
+    cards.push({ type: "tile", entity: id });
+  }
+  for (const id of sortByFriendlyName(
+    ids.filter(
+      (id) =>
+        domainOf(id) === "binary_sensor" &&
+        SPACES_BINARY_CLASSES.includes(deviceClass(id)),
+    ),
+    hass,
+  )) {
+    cards.push({ type: "tile", entity: id });
+  }
+  return cards;
+}
+
+function buildHomeView(model, hass) {
+  const sections = [];
+  sections.push({
+    type: "grid",
+    column_span: 4,
+    cards: [
+      {
+        type: "custom:hearthlight-brand",
+        asset: "combination-mark-2",
+        plain: true,
+        height: "56px",
+        alignment: "start",
+      },
+    ],
+  });
+
+  const primary = model.flat.filter((e) => !e.category).map((e) => e.id);
+
+  const weatherId = primary.find((id) => id.startsWith("weather."));
+  if (weatherId) {
+    sections.push({
+      type: "grid",
+      cards: [
+        {
+          type: "weather-forecast",
+          entity: weatherId,
+          forecast_type: "daily",
+          grid_options: { columns: "full" },
+        },
+      ],
+    });
+  }
+
+  const onNowIds = primary.filter(
+    (id) => id.startsWith("light.") || id.startsWith("switch."),
+  );
+  const openIds = primary.filter(
+    (id) =>
+      id.startsWith("binary_sensor.") &&
+      OPENING_CLASSES.includes(hass.states[id]?.attributes?.device_class),
+  );
+  const lockIds = primary.filter((id) => id.startsWith("lock."));
+  const glanceCards = [];
+  if (onNowIds.length) {
+    glanceCards.push({
+      type: "entity-filter",
+      entities: onNowIds,
+      state_filter: ["on"],
+      card: { type: "glance", title: "On now" },
+    });
+  }
+  if (openIds.length) {
+    glanceCards.push({
+      type: "entity-filter",
+      entities: openIds,
+      state_filter: ["on"],
+      card: { type: "glance", title: "Open now" },
+    });
+  }
+  if (lockIds.length) {
+    glanceCards.push({
+      type: "entity-filter",
+      entities: lockIds,
+      state_filter: ["unlocked", "open", "opening", "jammed"],
+      card: { type: "glance", title: "Unlocked" },
+    });
+  }
+  if (glanceCards.length) {
+    sections.push({
+      type: "grid",
+      cards: [
+        { type: "heading", heading: "At a glance", icon: "mdi:eye-outline" },
+        ...glanceCards.map((card) => ({
+          ...card,
+          grid_options: { columns: "full" },
+        })),
+      ],
+    });
+  }
+
+  const favoriteAreas = [...model.byArea.entries()]
+    .filter(([areaId]) => areaId)
+    .sort((a, b) => b[1].length - a[1].length)
+    .slice(0, 4)
+    .map(([areaId]) => areaId);
+  if (favoriteAreas.length) {
+    sections.push({
+      type: "grid",
+      column_span: 2,
+      cards: [
+        { type: "heading", heading: "Spaces", icon: "mdi:sofa" },
+        ...favoriteAreas.map((areaId) => ({
+          type: "area",
+          area: areaId,
+          navigation_path: `/${HL_DASHBOARD_PATH}/spaces`,
+          grid_options: { columns: 6 },
+        })),
+      ],
+    });
+  }
+
+  sections.push(navbarSection());
+  return hlView("Home", "home", "mdi:home", sections);
+}
+
+function buildSpacesView(model, hass) {
+  const sections = [];
+  const areaIds = [...model.byArea.keys()]
+    .filter((areaId) => areaId)
+    .sort((a, b) => {
+      const floorA = hass.areas[a]?.floor_id ?? "￿";
+      const floorB = hass.areas[b]?.floor_id ?? "￿";
+      if (floorA !== floorB) return floorA.localeCompare(floorB);
+      const nameA = hass.areas[a]?.name ?? a;
+      return nameA.localeCompare(hass.areas[b]?.name ?? b);
+    });
+  for (const areaId of areaIds) {
+    const cards = buildAreaCards(model.byArea.get(areaId), hass);
+    if (!cards.length) continue;
+    const area = hass.areas[areaId];
+    const heading = {
+      type: "heading",
+      heading: area?.name ?? "Area",
+      heading_style: "title",
+    };
+    if (area?.icon) heading.icon = area.icon;
+    sections.push({ type: "grid", cards: [heading, ...cards] });
+  }
+  const other = buildAreaCards(model.byArea.get(null) ?? [], hass);
+  if (other.length) {
+    sections.push({
+      type: "grid",
+      cards: [
+        { type: "heading", heading: "Other", heading_style: "title" },
+        ...other,
+      ],
+    });
+  }
+  sections.push(navbarSection());
+  return hlView("Spaces", "spaces", "mdi:sofa", sections);
+}
+
+function buildSystemView(model, hass) {
+  const sections = [];
+  const all = model.flat.map((e) => e.id);
+
+  const updateIds = all.filter((id) => id.startsWith("update."));
+  if (updateIds.length) {
+    sections.push({
+      type: "grid",
+      cards: [
+        { type: "heading", heading: "Updates", icon: "mdi:update" },
+        {
+          type: "entity-filter",
+          entities: updateIds,
+          state_filter: ["on"],
+          card: { type: "entities", title: "Updates available" },
+          grid_options: { columns: "full" },
+        },
+      ],
+    });
+  }
+
+  const batteryIds = all.filter(
+    (id) =>
+      id.startsWith("sensor.") &&
+      hass.states[id]?.attributes?.device_class === "battery",
+  );
+  if (batteryIds.length) {
+    const cards = [
+      { type: "heading", heading: "Batteries", icon: "mdi:battery-alert" },
+      {
+        type: "entity-filter",
+        entities: batteryIds,
+        conditions: [{ condition: "numeric_state", below: 20 }],
+        card: { type: "entities", title: "Low batteries" },
+        grid_options: { columns: "full" },
+      },
+    ];
+    if (batteryIds.length <= 12) {
+      cards.push({
+        type: "glance",
+        title: "All batteries",
+        entities: sortByFriendlyName(batteryIds, hass),
+        grid_options: { columns: "full" },
+      });
+    }
+    sections.push({ type: "grid", cards });
+  }
+
+  const healthIds = all.filter((id) => {
+    const deviceClass = hass.states[id]?.attributes?.device_class;
+    return (
+      hass.entities[id]?.platform === "systemmonitor" ||
+      deviceClass === "connectivity" ||
+      deviceClass === "signal_strength"
+    );
+  });
+  if (healthIds.length) {
+    sections.push({
+      type: "grid",
+      cards: [
+        { type: "heading", heading: "System health", icon: "mdi:heart-pulse" },
+        ...sortByFriendlyName(healthIds, hass)
+          .slice(0, 12)
+          .map((id) => ({ type: "tile", entity: id })),
+      ],
+    });
+  }
+
+  sections.push(navbarSection());
+  return hlView("System", "system", "mdi:cog-outline", sections);
+}
+
+function buildSupportView(model, hass) {
+  const sections = [];
+  sections.push({
+    type: "grid",
+    column_span: 4,
+    cards: [
+      {
+        type: "custom:hearthlight-brand",
+        asset: "wordmark-2",
+        plain: true,
+        height: "110px",
+      },
+    ],
+  });
+
+  const switches = hearthlightSwitchIds(hass).sort((a, b) => {
+    const rank = (id) => (id.includes("support") ? 0 : 1);
+    return rank(a) - rank(b) || a.localeCompare(b);
+  });
+  if (switches.length) {
+    sections.push({
+      type: "grid",
+      column_span: 2,
+      cards: [
+        { type: "heading", heading: "Remote access", icon: "mdi:headset" },
+        ...switches.map((id) => ({
+          type: "custom:hearthlight-remote-access",
+          entity: id,
+          grid_options: { columns: "full" },
+        })),
+      ],
+    });
+  }
+
+  sections.push({
+    type: "grid",
+    column_span: 2,
+    cards: [
+      { type: "heading", heading: "Self service", icon: "mdi:tools" },
+      {
+        type: "button",
+        name: "Quick Fix",
+        icon: "mdi:auto-fix",
+        tap_action: {
+          action: "perform-action",
+          perform_action: "homeassistant.reload_all",
+          confirmation: {
+            text: "Apply a quick fix? This reloads the configuration — nothing turns off and nothing is interrupted.",
+          },
+        },
+        grid_options: { columns: 6, rows: 2 },
+      },
+      {
+        type: "button",
+        name: "Reboot System",
+        icon: "mdi:restart",
+        tap_action: {
+          action: "perform-action",
+          perform_action: "homeassistant.restart",
+          confirmation: {
+            text: "Reboot the system? The dashboard will be unavailable for a few minutes; your devices keep working.",
+          },
+        },
+        grid_options: { columns: 6, rows: 2 },
+      },
+      {
+        type: "markdown",
+        text_only: true,
+        content: "Clears most glitches without interrupting your home.",
+        grid_options: { columns: 6 },
+      },
+      {
+        type: "markdown",
+        text_only: true,
+        content: "A full restart — try Quick Fix first.",
+        grid_options: { columns: 6 },
+      },
+    ],
+  });
+
+  sections.push({
+    type: "grid",
+    column_span: 2,
+    cards: [
+      { type: "custom:hearthlight-contact", grid_options: { columns: "full" } },
+    ],
+  });
+
+  sections.push(navbarSection());
+  return hlView("Support", "support", "mdi:lifebuoy", sections);
+}
+
+class HearthLightDashboardStrategy {
+  // HA 2026+: rebuild live when the registries change; ignored before that.
+  static registryDependencies = ["entities", "devices", "areas"];
+
+  static async generate(config, hass) {
+    const model = buildDashboardModel(hass);
+    return {
+      views: [
+        buildHomeView(model, hass),
+        buildSpacesView(model, hass),
+        buildSystemView(model, hass),
+        buildSupportView(model, hass),
+      ],
+    };
+  }
+}
+
+if (!customElements.get("ll-strategy-dashboard-hearthlight")) {
+  customElements.define(
+    "ll-strategy-dashboard-hearthlight",
+    HearthLightDashboardStrategy,
+  );
+}
+
+// HA 2026.5+ lists registered strategies in the new-dashboard dialog;
+// on older frontends this array is simply never read.
+window.customStrategies = window.customStrategies || [];
+window.customStrategies.push({
+  type: "hearthlight",
+  strategyType: "dashboard",
+  name: "HearthLight",
+  description:
+    "Branded HearthLight dashboard with Home, Spaces, System, and Support views",
+  documentationURL: "https://github.com/mjg913/HearthLight-HASS-Integration",
+});

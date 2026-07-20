@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "HearthLight",
-        "description": "This installs the HearthLight theme, sets it as the backend default, and registers the `custom:hearthlight-brand` and `custom:hearthlight-remote-access` dashboard cards. All behaviors can be toggled later in the integration's options."
+        "description": "This installs the HearthLight theme, sets it as the backend default, registers the HearthLight dashboard cards, and creates the ready-made HearthLight dashboard. All behaviors can be toggled later in the integration's options."
       }
     },
     "abort": {
@@ -18,6 +18,7 @@
           "manage_theme": "Manage the theme file",
           "set_default_theme": "Set HearthLight as the backend default theme",
           "register_card_resource": "Register the card dashboard resource",
+          "create_dashboard": "Create the HearthLight dashboard",
           "managed_users": "Remote access: managed users",
           "provision_support_user": "Provision the HearthLight Support user"
         },
@@ -25,6 +26,7 @@
           "manage_theme": "Keep themes/hearthlight/hearthlight.yaml installed and up to date. Local edits to that file are overwritten on update.",
           "set_default_theme": "Re-applies HearthLight for light and dark on every Home Assistant start.",
           "register_card_resource": "Makes the HearthLight cards available on dashboards.",
+          "create_dashboard": "Adds a ready-made HearthLight dashboard (Home, Spaces, System, Support) to the sidebar. It rebuilds itself as areas and devices change. To hide something from it, add a label named exactly 'hearthlight-exclude' to that area, device, or entity. To customize the layout, use the dashboard's edit menu and take control — HearthLight never overwrites a customized dashboard.",
           "managed_users": "Each selected user gets a remote-access switch and duration setting. Turning the switch on allows that user to log in remotely until the duration elapses; turning it off (or the timer expiring) restores local-only login and ends their active sessions.",
           "provision_support_user": "Creates a managed 'HearthLight Support' admin account owned by the integration. It stays locked (local-only, unknown password) until its remote-access switch is turned on, which generates a one-session password shown on the card. If the account is deleted it is recreated automatically; turning this off (or removing the integration) deletes it."
         }
@@ -55,6 +57,10 @@
     "yaml_mode_resource": {
       "title": "Dashboard resource could not be registered automatically",
       "description": "Your dashboards are configured in YAML mode, so HearthLight loaded its cards globally instead. For a cleaner setup, add the resource to your Lovelace YAML config:\n\n```yaml\nlovelace:\n  resources:\n    - url: /hearthlight/hearthlight-brand-card.js\n      type: module\n```"
+    },
+    "dashboard_create_failed": {
+      "title": "HearthLight dashboard could not be created automatically",
+      "description": "HearthLight could not create its dashboard through Home Assistant's dashboard storage. You can create it manually: go to Settings > Dashboards > Add dashboard, create a new dashboard, then open its raw configuration editor and replace the contents with:\n\n```yaml\nstrategy:\n  type: custom:hearthlight\n```"
     }
   }
 }

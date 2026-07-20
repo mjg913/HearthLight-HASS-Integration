@@ -16,8 +16,15 @@ CARD_URL = f"{URL_BASE}/hearthlight-brand-card.js"
 CONF_MANAGE_THEME = "manage_theme"
 CONF_SET_DEFAULT_THEME = "set_default_theme"
 CONF_REGISTER_CARD_RESOURCE = "register_card_resource"
+CONF_CREATE_DASHBOARD = "create_dashboard"
 CONF_MANAGED_USERS = "managed_users"
 CONF_PROVISION_SUPPORT_USER = "provision_support_user"
+
+# Storage-dashboard url_paths must contain a hyphen (core validation).
+DASHBOARD_URL_PATH = "hearthlight-home"
+DASHBOARD_TITLE = "HearthLight"
+DASHBOARD_ICON = "mdi:fire"
+DASHBOARD_STRATEGY_TYPE = "custom:hearthlight"
 
 SUPPORT_USERNAME = "hearthlight_support"  # pre-normalized: .strip().casefold()
 SUPPORT_USER_NAME = "HearthLight Support"
@@ -48,3 +55,4 @@ EVENT_USER_UPDATED = "user_updated"
 ISSUE_THEMES_INCLUDE_MISSING = "themes_include_missing"
 ISSUE_YAML_MODE_RESOURCE = "yaml_mode_resource"
 ISSUE_NO_HA_AUTH_PROVIDER = "no_ha_auth_provider"
+ISSUE_DASHBOARD_CREATE_FAILED = "dashboard_create_failed"

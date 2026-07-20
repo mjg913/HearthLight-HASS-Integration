@@ -18,8 +18,9 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.loader import async_get_integration
 
-from . import resources, support_user, theme
+from . import dashboard, resources, support_user, theme
 from .const import (
+    CONF_CREATE_DASHBOARD,
     CONF_MANAGE_THEME,
     CONF_MANAGED_USERS,
     CONF_PROVISION_SUPPORT_USER,
@@ -192,6 +193,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: HearthLightConfigEntry) 
         integration = await async_get_integration(hass, entry.domain)
         await resources.async_register_card_resource(hass, str(integration.version))
 
+    # After the card resource: the dashboard's strategy lives in that module.
+    if entry.options.get(CONF_CREATE_DASHBOARD, True):
+        await dashboard.async_create_dashboard(hass)
+
     support_data: RemoteAccessData | None = None
     if entry.options.get(CONF_PROVISION_SUPPORT_USER, False):
         support_data = await _async_provision_support_user(hass, entry)
@@ -234,7 +239,13 @@ async def async_unload_entry(
 async def async_remove_entry(
     hass: HomeAssistant, entry: HearthLightConfigEntry
 ) -> None:
-    """Clean removal: resource, theme, default theme, and remote access."""
+    """Clean removal: dashboard, resource, theme, default theme, remote access."""
+    # Unconditional (not gated on the toggle): a dashboard created while the
+    # toggle was on should still go; the pristine-config check is the guard.
+    try:
+        await dashboard.async_remove_dashboard(hass)
+    except Exception as err:  # noqa: BLE001 - best-effort cleanup
+        LOGGER.warning("Could not remove the HearthLight dashboard: %s", err)
     try:
         await resources.async_remove_card_resource(hass)
     except Exception as err:  # noqa: BLE001 - best-effort cleanup
