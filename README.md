@@ -91,7 +91,7 @@ The card shows the toggle, a live countdown while access is on, and a stepper fo
 Turn on **Provision the HearthLight Support user** in the integration options and the integration creates and owns a `HearthLight Support` admin account end to end — no manual user setup, no stored passwords:
 
 - The account is created **locked**: local-only login and a random password nobody knows.
-- Turning its remote-access switch on generates a fresh one-session password (`####-####-####`) and shows it on the card behind tap-to-reveal — the customer reads it to the support technician. Nothing is stored anywhere, on the box or off it.
+- Turning its remote-access switch on generates a fresh one-session password (`####-####-####`) and displays it on the card — the customer reads it to the support technician. Nothing is stored anywhere, on the box or off it.
 - When the window closes (toggle off, timer, or external revoke), the password is rotated to a random throwaway and all of the account's sessions end. Every session starts from a new password.
 - If someone deletes the account, the integration recreates it immediately — locked. Deleting it accomplishes nothing except rotating its credentials. It is only removed for real by turning the provisioning option off or deleting the integration.
 
@@ -99,7 +99,7 @@ Caveats:
 
 - The session password is a live state attribute while access is on. It is excluded from the recorder (no history), but anything that consumes **live** states off-box (`mqtt_statestream`, InfluxDB exporters, remote-instance links) will see it during an active window.
 - Restarting Home Assistant mid-window generates a **new** password; a previously relayed one stops working.
-- The card's Copy button requires HTTPS; on plain-HTTP installs the row is reveal-only.
+- The card's Copy button requires HTTPS; on plain-HTTP installs the password is display-only.
 - Requires the default `homeassistant` (username/password) auth provider; installs that customize `auth_providers:` without it get a Repair issue and provisioning is skipped.
 - Not healed automatically: demoting the account from admin or deactivating it (only deletion is).
 

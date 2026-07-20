@@ -399,28 +399,101 @@ class HearthLightRemoteAccessCard extends HTMLElement {
     const showPassword = config.show_password !== false && !!password;
     const canCopy = !!(navigator.clipboard && window.isSecureContext);
 
+    this._expiresAt =
+      isOn && state.attributes.expires_at
+        ? new Date(state.attributes.expires_at)
+        : null;
+    const timed = !!this._expiresAt && !Number.isNaN(this._expiresAt.getTime());
+
+    let stateClass = "private";
+    let icon = "mdi:shield-check";
+    let stateLabel = "Private";
+    let helper =
+      "Your system is private. Our team cannot remotely access your home.";
+    if (unavailable) {
+      stateClass = "unavail";
+      icon = "mdi:shield-off-outline";
+      stateLabel = "Unavailable";
+      helper = "This control is unavailable — the managed user may no longer exist.";
+    } else if (isOn) {
+      stateClass = "active";
+      icon = "mdi:headset";
+      stateLabel = "Support access active";
+      helper = "Our team can currently connect to your home to assist you.";
+    }
+
     this.shadowRoot.innerHTML = `
       <style>
         :host { display: block; }
-        ha-card { padding: 16px; }
-        .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-        .name { font-size: 1.1em; font-weight: 500; color: var(--primary-text-color); }
-        .status { margin-top: 4px; font-size: 0.9em; color: var(--secondary-text-color); }
-        .status.on { color: var(--primary-color); }
-        .password { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
-        .password .label { flex: 1; font-size: 0.9em; color: var(--secondary-text-color); }
+        ha-card {
+          padding: 16px;
+          --ha-card-border-width: 1.5px;
+          transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+        ha-card.private { --ha-card-border-color: var(--success-color, #1f9d63); }
+        ha-card.active {
+          --ha-card-border-color: ${BRAND_EMBER};
+          --ha-card-box-shadow: 0 0 0 1px rgba(252, 113, 20, 0.18),
+            0 2px 14px rgba(252, 113, 20, 0.16);
+        }
+        .head { display: flex; align-items: center; gap: 12px; }
+        .chip {
+          width: 40px; height: 40px; border-radius: 50%; flex: none;
+          display: flex; align-items: center; justify-content: center;
+        }
+        .chip ha-icon { --mdc-icon-size: 22px; }
+        .private .chip {
+          background: rgba(var(--rgb-success-color, 31, 157, 99), 0.12);
+          color: var(--success-color, #1f9d63);
+        }
+        .active .chip { background: rgba(252, 113, 20, 0.12); color: ${BRAND_EMBER}; }
+        .unavail .chip {
+          background: var(--secondary-background-color);
+          color: var(--disabled-text-color);
+        }
+        .titles { flex: 1; min-width: 0; }
+        .name {
+          font-size: 1.05em; font-weight: 600;
+          color: var(--primary-text-color);
+        }
+        .state-label { margin-top: 2px; font-size: 0.8em; font-weight: 500; }
+        .private .state-label { color: var(--success-color, #1f9d63); }
+        .active .state-label { color: ${BRAND_EMBER}; }
+        .unavail .state-label { color: var(--disabled-text-color); }
+        .helper {
+          margin: 12px 0 0; font-size: 0.9em; line-height: 1.45;
+          color: var(--secondary-text-color);
+        }
+        .countdown { margin-top: 8px; font-size: 0.85em; color: var(--secondary-text-color); }
+        .pwpanel {
+          margin-top: 12px; padding: 12px 12px 10px; text-align: center;
+          border-radius: var(--mdc-shape-medium, 12px);
+          background: var(--secondary-background-color);
+        }
+        .pwlabel {
+          font-size: 0.7em; font-weight: 600; letter-spacing: 0.09em;
+          text-transform: uppercase; color: var(--secondary-text-color);
+        }
+        .pwrow {
+          display: flex; align-items: center; justify-content: center;
+          gap: 12px; margin-top: 6px;
+        }
         .pw {
-          border: none; background: none; cursor: pointer; padding: 2px 4px;
           font-family: var(--ha-font-family-code, monospace);
-          font-size: 1em; letter-spacing: 1px; color: var(--primary-text-color);
+          font-size: 1.35em; letter-spacing: 2px;
+          color: var(--primary-text-color);
         }
         .copy {
           border: 1px solid var(--divider-color); border-radius: 12px;
           background: none; cursor: pointer; padding: 2px 10px;
           font-size: 0.8em; color: var(--primary-text-color);
         }
-        .copy:hover { border-color: var(--primary-color); }
-        .duration { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--primary-text-color); }
+        .copy:hover { border-color: ${BRAND_EMBER}; }
+        .pwhint, .hint { margin-top: 6px; font-size: 0.75em; color: var(--secondary-text-color); }
+        .duration {
+          display: flex; align-items: center; gap: 8px; margin-top: 12px;
+          color: var(--primary-text-color);
+        }
         .duration .label { flex: 1; font-size: 0.9em; color: var(--secondary-text-color); }
         .duration .value { min-width: 64px; text-align: center; }
         .step {
@@ -428,14 +501,13 @@ class HearthLightRemoteAccessCard extends HTMLElement {
           border: 1px solid var(--divider-color); background: none;
           color: var(--primary-text-color); font-size: 1.1em; cursor: pointer;
         }
-        .step:hover { border-color: var(--primary-color); }
-        .hint { margin-top: 4px; font-size: 0.75em; color: var(--secondary-text-color); }
+        .step:hover { border-color: ${BRAND_EMBER}; }
         .fallback-toggle {
           width: 44px; height: 24px; border-radius: 12px; border: none;
           cursor: pointer; position: relative;
           background: var(--switch-unchecked-track-color, var(--divider-color));
         }
-        .fallback-toggle[aria-checked="true"] { background: var(--primary-color); }
+        .fallback-toggle[aria-checked="true"] { background: ${BRAND_EMBER}; }
         .fallback-toggle::after {
           content: ""; position: absolute; top: 2px; left: 2px;
           width: 20px; height: 20px; border-radius: 50%; background: #fff;
@@ -443,22 +515,29 @@ class HearthLightRemoteAccessCard extends HTMLElement {
         }
         .fallback-toggle[aria-checked="true"]::after { transform: translateX(20px); }
       </style>
-      <ha-card>
+      <ha-card class="${stateClass}">
         <div class="head">
-          <div class="name">${escapeHtml(name)}</div>
+          <div class="chip"><ha-icon icon="${icon}"></ha-icon></div>
+          <div class="titles">
+            <div class="name">${escapeHtml(name)}</div>
+            <div class="state-label">${stateLabel}</div>
+          </div>
           <div class="toggle"></div>
         </div>
-        <div class="status${isOn ? " on" : ""}"></div>
+        <p class="helper">${helper}</p>
         ${
           showPassword
-            ? `<div class="password">
-                 <span class="label">Session password</span>
-                 <button class="pw" aria-label="Tap to reveal the password"></button>
-                 ${canCopy ? `<button class="copy">Copy</button>` : ""}
-               </div>
-               <div class="hint">Read this to the support technician — it changes every session</div>`
+            ? `<div class="pwpanel">
+                 <div class="pwlabel">Session password</div>
+                 <div class="pwrow">
+                   <span class="pw"></span>
+                   ${canCopy ? `<button class="copy">Copy</button>` : ""}
+                 </div>
+                 <div class="pwhint">Read this to the support technician — it changes every session</div>
+               </div>`
             : ""
         }
+        ${isOn && timed ? `<div class="countdown"></div>` : ""}
         ${
           showDuration
             ? `<div class="duration">
@@ -475,15 +554,8 @@ class HearthLightRemoteAccessCard extends HTMLElement {
     this.shadowRoot.querySelector(".toggle").append(this._makeToggle(isOn, unavailable));
 
     if (showPassword) {
-      const MASK = "••••-••••-••••";
-      const pwEl = this.shadowRoot.querySelector(".pw");
-      let revealed = false;
       // textContent only — the password must never be interpolated into HTML.
-      pwEl.textContent = MASK;
-      pwEl.addEventListener("click", () => {
-        revealed = !revealed;
-        pwEl.textContent = revealed ? password : MASK;
-      });
+      this.shadowRoot.querySelector(".pw").textContent = password;
       const copyBtn = this.shadowRoot.querySelector(".copy");
       if (copyBtn) {
         copyBtn.addEventListener("click", async () => {
@@ -494,23 +566,16 @@ class HearthLightRemoteAccessCard extends HTMLElement {
               copyBtn.textContent = "Copy";
             }, 1500);
           } catch {
-            /* denied: reveal-only fallback */
+            /* denied: display-only fallback */
           }
         });
       }
     }
 
-    this._statusEl = this.shadowRoot.querySelector(".status");
-    this._expiresAt =
-      isOn && state.attributes.expires_at
-        ? new Date(state.attributes.expires_at)
-        : null;
-    this._updateStatus(isOn, unavailable);
-    if (this._expiresAt && !Number.isNaN(this._expiresAt.getTime())) {
-      this._countdownTimer = setInterval(
-        () => this._updateStatus(true, false),
-        1000,
-      );
+    this._countdownEl = this.shadowRoot.querySelector(".countdown");
+    if (this._countdownEl) {
+      this._updateCountdown();
+      this._countdownTimer = setInterval(() => this._updateCountdown(), 1000);
     }
 
     if (showDuration) {
@@ -537,26 +602,14 @@ class HearthLightRemoteAccessCard extends HTMLElement {
     }
   }
 
-  _updateStatus(isOn, unavailable) {
-    const el = this._statusEl;
-    if (!el) return;
-    if (unavailable) {
-      el.textContent = "Unavailable — the managed user may no longer exist";
-      return;
-    }
-    if (!isOn) {
-      el.textContent = "Remote access is off";
-      return;
-    }
-    if (this._expiresAt && !Number.isNaN(this._expiresAt.getTime())) {
-      const remaining = this._expiresAt - Date.now();
-      el.textContent =
-        remaining > 0
-          ? `Remote access is on — ${formatRemaining(remaining)} remaining`
-          : "Remote access is on — ending…";
-    } else {
-      el.textContent = "Remote access is on";
-    }
+  _updateCountdown() {
+    const el = this._countdownEl;
+    if (!el || !this._expiresAt) return;
+    const remaining = this._expiresAt - Date.now();
+    el.textContent =
+      remaining > 0
+        ? `Access ends automatically in ${formatRemaining(remaining)}`
+        : "Access is ending…";
   }
 
   _makeToggle(isOn, disabled) {
@@ -565,6 +618,9 @@ class HearthLightRemoteAccessCard extends HTMLElement {
       el = document.createElement("ha-switch");
       el.checked = isOn;
       el.disabled = disabled;
+      // The active accent is the brand ember regardless of theme.
+      el.style.setProperty("--switch-checked-button-color", BRAND_EMBER);
+      el.style.setProperty("--switch-checked-track-color", "rgba(252, 113, 20, 0.5)");
       el.addEventListener("change", () => this._toggle(el.checked));
     } else {
       // ha-switch not defined (unusual load order): degrade to a CSS toggle.
