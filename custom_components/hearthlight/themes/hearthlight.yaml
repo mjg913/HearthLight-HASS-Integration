@@ -49,6 +49,8 @@ HearthLight:
   # for older frontends, which ignore these and vice versa).
   ha-switch-checked-background-color: "#fc7114"
   ha-switch-checked-border-color: "#fc7114"
+  ha-switch-checked-thumb-background-color: "#ffffff"
+  ha-switch-checked-thumb-border-color: "#ffffff"
   switch-checked-button-color: "#fc7114"
   paper-slider-knob-color: "#fc7114"
   paper-slider-knob-start-color: "#fc7114"

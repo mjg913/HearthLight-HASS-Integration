@@ -445,6 +445,7 @@ class HearthLightRemoteAccessCard extends HTMLElement {
         .clip { overflow: hidden; min-height: 0; }
         /* Password content fades in only after the box finishes expanding. */
         .pwcontent { opacity: 0; }
+        .pwcontent.notrans { transition: none !important; }
         .pwwrap.shown .pwcontent { opacity: 1; }
         /* Transitions are enabled only after first paint (.ready), so a card
            that loads already-active settles instantly with no entrance. */
@@ -550,6 +551,7 @@ class HearthLightRemoteAccessCard extends HTMLElement {
     this._stateLabelEl = root.querySelector(".state-label");
     this._helperEl = root.querySelector(".helper");
     this._pwWrap = root.querySelector(".pwwrap");
+    this._pwContent = root.querySelector(".pwcontent");
     this._pwEl = root.querySelector(".pw");
     this._cdWrap = root.querySelector(".cdwrap");
     this._countdownEl = root.querySelector(".countdown");
@@ -683,8 +685,12 @@ class HearthLightRemoteAccessCard extends HTMLElement {
     const wrap = this._pwWrap;
     clearTimeout(this._pwStageTimer);
     if (!password) {
-      // Collapse; the content fades away while the box shrinks.
+      // Collapse; the content fades away while the box shrinks, then the
+      // digits are cleared so a closed panel can never re-open with residue.
       wrap.classList.remove("open", "shown");
+      this._pwStageTimer = setTimeout(() => {
+        this._pwEl.textContent = "";
+      }, 400);
       return;
     }
     if (!this._card.classList.contains("ready")) {
@@ -699,12 +705,14 @@ class HearthLightRemoteAccessCard extends HTMLElement {
       wrap.classList.add("open");
       this._afterExpand(() => wrap.classList.add("shown"));
     } else {
-      // New session while open: fade out, swap, fade back in.
+      // New session while open: never animate the superseded value — snap
+      // it invisible instantly, swap the text, then fade the new one in.
+      this._pwContent.classList.add("notrans");
       wrap.classList.remove("shown");
-      this._pwStageTimer = setTimeout(() => {
-        this._pwEl.textContent = password;
-        wrap.classList.add("shown");
-      }, 260);
+      void this._pwContent.offsetWidth; // commit the snap
+      this._pwContent.classList.remove("notrans");
+      this._pwEl.textContent = password;
+      requestAnimationFrame(() => wrap.classList.add("shown"));
     }
   }
 
@@ -750,7 +758,12 @@ class HearthLightRemoteAccessCard extends HTMLElement {
       el.style.setProperty("--ha-switch-checked-thumb-border-color", "#ffffff");
       el.style.setProperty("--switch-checked-button-color", BRAND_EMBER);
       el.style.setProperty("--switch-checked-track-color", "rgba(252, 113, 20, 0.5)");
-      el.addEventListener("change", () => this._toggle(el.checked));
+      el.addEventListener("change", () => {
+        // Only act on user intent: ignore change events that merely echo
+        // the state we already have (e.g. from programmatic checked sync).
+        if (el.checked === this._isOn) return;
+        this._toggle(el.checked);
+      });
     } else {
       // ha-switch not defined (unusual load order): degrade to a CSS toggle.
       el = document.createElement("button");

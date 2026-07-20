@@ -67,6 +67,11 @@ class HearthLightRemoteAccessSwitch(SwitchEntity, RestoreEntity):
         self._expires_at: datetime | None = None
         # Held in memory only — a restart mid-window mints a fresh one.
         self._session_password: str | None = None
+        # Concurrency latch: a duplicated/interleaved operation (e.g. the
+        # user-updated reconciler reacting to our own auth writes) becomes a
+        # no-op instead of a second rotation + second state write. Checks and
+        # sets are synchronous, so the guard is atomic under asyncio.
+        self._op_in_progress = False
 
     @property
     def extra_state_attributes(self) -> dict[str, str]:
@@ -87,44 +92,51 @@ class HearthLightRemoteAccessSwitch(SwitchEntity, RestoreEntity):
         self.async_on_remove(
             self.hass.bus.async_listen(EVENT_USER_UPDATED, self._async_user_updated)
         )
-        user = await self._async_get_user()
-        if user is None:
-            self._attr_available = False
-            return
-
-        restored_expiry: datetime | None = None
-        last = await self.async_get_last_state()
-        if last is not None and (raw := last.attributes.get(ATTR_EXPIRES_AT)):
-            restored_expiry = dt_util.parse_datetime(raw)
-
-        if user.local_only:
-            # The auth flag is the source of truth; ignore any restored ON.
-            # Defensive scramble in case HA died between grant and scramble.
-            await self._async_end_session()
-            self._attr_is_on = False
-        elif restored_expiry is not None and restored_expiry <= dt_util.utcnow():
-            # Window expired while HA was down: fail closed now.
-            await self._async_revoke(user)
-            await self._async_end_session()
-            self._attr_is_on = False
-        elif restored_expiry is not None:
-            # The old session password is gone with the process; mint a new
-            # one for the remainder of the window (documented behavior).
-            if not await self._async_begin_session():
-                await self._async_revoke(user)
-                self._attr_is_on = False
+        self._op_in_progress = True
+        try:
+            user = await self._async_get_user()
+            if user is None:
+                self._attr_available = False
                 return
-            self._attr_is_on = True
-            self._schedule_auto_off(restored_expiry - dt_util.utcnow())
-        else:
-            # Remote access was enabled outside the integration (e.g. the
-            # users UI). Adopt it so it is time-boxed rather than open-ended.
-            if not await self._async_begin_session():
-                await self._async_revoke(user)
+
+            restored_expiry: datetime | None = None
+            last = await self.async_get_last_state()
+            if last is not None and (raw := last.attributes.get(ATTR_EXPIRES_AT)):
+                restored_expiry = dt_util.parse_datetime(raw)
+
+            if user.local_only:
+                # The auth flag is the source of truth; ignore any restored
+                # ON. Defensive scramble in case HA died mid-session.
+                await self._async_end_session()
                 self._attr_is_on = False
-                return
-            self._attr_is_on = True
-            self._schedule_auto_off(timedelta(minutes=self._data.duration_minutes))
+            elif restored_expiry is not None and restored_expiry <= dt_util.utcnow():
+                # Window expired while HA was down: fail closed now.
+                await self._async_revoke(user)
+                await self._async_end_session()
+                self._attr_is_on = False
+            elif restored_expiry is not None:
+                # The old session password is gone with the process; mint a
+                # new one for the remainder of the window (documented).
+                if not await self._async_begin_session():
+                    await self._async_revoke(user)
+                    self._attr_is_on = False
+                    return
+                self._attr_is_on = True
+                self._schedule_auto_off(restored_expiry - dt_util.utcnow())
+            else:
+                # Remote access was enabled outside the integration (e.g. the
+                # users UI). Adopt it so it is time-boxed, not open-ended.
+                if not await self._async_begin_session():
+                    await self._async_revoke(user)
+                    self._attr_is_on = False
+                    return
+                self._attr_is_on = True
+                self._schedule_auto_off(timedelta(minutes=self._data.duration_minutes))
+            LOGGER.debug(
+                "Restore settled [%s]: %s", self._data.registry_key, self._attr_is_on
+            )
+        finally:
+            self._op_in_progress = False
 
     async def async_will_remove_from_hass(self) -> None:
         """Cancel the timer without revoking access (reload must not revoke)."""
@@ -134,29 +146,45 @@ class HearthLightRemoteAccessSwitch(SwitchEntity, RestoreEntity):
 
     async def async_turn_on(self, **_kwargs: Any) -> None:
         """Allow remote logins and start the auto-off window."""
-        user = await self._async_get_user()
-        if user is None:
-            msg = f"Managed user {self._data.user_id} no longer exists"
-            raise HomeAssistantError(msg)
-        if self._data.is_support:
-            # Order matters: never open access without a fresh known
-            # password. A rotation failure raises before access opens.
-            self._session_password = await support_user.async_rotate_password(self.hass)
-        await self.hass.auth.async_update_user(user, local_only=False)
-        # Turning on while already on deliberately restarts the full window.
-        self._schedule_auto_off(timedelta(minutes=self._data.duration_minutes))
-        self._attr_is_on = True
-        self.async_write_ha_state()
+        if self._op_in_progress:
+            return
+        self._op_in_progress = True
+        try:
+            user = await self._async_get_user()
+            if user is None:
+                msg = f"Managed user {self._data.user_id} no longer exists"
+                raise HomeAssistantError(msg)
+            if self._data.is_support:
+                # Order matters: never open access without a fresh known
+                # password. A rotation failure raises before access opens.
+                self._session_password = await support_user.async_rotate_password(
+                    self.hass
+                )
+            await self.hass.auth.async_update_user(user, local_only=False)
+            # Turning on while already on deliberately restarts the window.
+            self._schedule_auto_off(timedelta(minutes=self._data.duration_minutes))
+            self._attr_is_on = True
+            LOGGER.debug("State write [turn_on]: %s", self._data.registry_key)
+            self.async_write_ha_state()
+        finally:
+            self._op_in_progress = False
 
     async def async_turn_off(self, **_kwargs: Any) -> None:
         """Revoke remote access immediately."""
-        self._cancel_auto_off()
-        user = await self._async_get_user()
-        if user is not None:
-            await self._async_revoke(user)
-        await self._async_end_session()
-        self._attr_is_on = False
-        self.async_write_ha_state()
+        if self._op_in_progress:
+            return
+        self._op_in_progress = True
+        try:
+            self._cancel_auto_off()
+            user = await self._async_get_user()
+            if user is not None:
+                await self._async_revoke(user)
+            await self._async_end_session()
+            self._attr_is_on = False
+            LOGGER.debug("State write [turn_off]: %s", self._data.registry_key)
+            self.async_write_ha_state()
+        finally:
+            self._op_in_progress = False
 
     async def _async_begin_session(self) -> bool:
         """Support user only: mint the session password. False = fail closed."""
@@ -202,19 +230,29 @@ class HearthLightRemoteAccessSwitch(SwitchEntity, RestoreEntity):
 
     async def _async_auto_off(self, _now: datetime) -> None:
         """Revoke access when the window expires."""
-        self._unsub_auto_off = None
-        self._expires_at = None
-        user = await self._async_get_user()
-        if user is not None:
-            try:
-                await self._async_revoke(user)
-            except Exception:  # noqa: BLE001 - nothing above catches timer callbacks
-                LOGGER.exception(
-                    "Could not auto-revoke remote access for %s", self._data.user_name
-                )
-        await self._async_end_session()
-        self._attr_is_on = False
-        self.async_write_ha_state()
+        if self._op_in_progress:
+            # A manual operation is mid-flight and owns the state; it either
+            # already revoked or is rescheduling a fresh window.
+            return
+        self._op_in_progress = True
+        try:
+            self._unsub_auto_off = None
+            self._expires_at = None
+            user = await self._async_get_user()
+            if user is not None:
+                try:
+                    await self._async_revoke(user)
+                except Exception:  # noqa: BLE001 - nothing above catches timer callbacks
+                    LOGGER.exception(
+                        "Could not auto-revoke remote access for %s",
+                        self._data.user_name,
+                    )
+            await self._async_end_session()
+            self._attr_is_on = False
+            LOGGER.debug("State write [auto_off]: %s", self._data.registry_key)
+            self.async_write_ha_state()
+        finally:
+            self._op_in_progress = False
 
     @callback
     def _async_user_removed(self, event: Event) -> None:
@@ -227,34 +265,55 @@ class HearthLightRemoteAccessSwitch(SwitchEntity, RestoreEntity):
         self._session_password = None
         self._attr_is_on = False
         self._attr_available = False
+        LOGGER.debug("State write [user_removed]: %s", self._data.registry_key)
         self.async_write_ha_state()
 
     async def _async_user_updated(self, event: Event) -> None:
         """
         Reconcile with external changes to the user's local_only flag.
 
-        Our own auth updates fire this event too, but by then the switch
-        state already matches the flag, so both branches are no-ops.
+        Our own auth writes fire this event too; the latch keeps this
+        reconciler out while any of our own operations is mid-flight, so only
+        genuinely external flips are acted on.
         """
-        if event.data.get("user_id") != self._data.user_id or not self.available:
+        if (
+            event.data.get("user_id") != self._data.user_id
+            or not self.available
+            or self._op_in_progress
+        ):
             return
         user = await self._async_get_user()
-        if user is None:
+        # Re-check after the await: an operation may have started meanwhile.
+        if user is None or self._op_in_progress:
             return
         if user.local_only and self._attr_is_on:
-            # Revoked externally (e.g. the users UI): mirror it, and end the
-            # sessions the external flip alone would have left running.
-            self._cancel_auto_off()
-            for token in list(user.refresh_tokens.values()):
-                self.hass.auth.async_remove_refresh_token(token)
-            await self._async_end_session()
-            self._attr_is_on = False
-            self.async_write_ha_state()
+            self._op_in_progress = True
+            try:
+                # Revoked externally (e.g. the users UI): mirror it, and end
+                # the sessions the external flip alone would leave running.
+                self._cancel_auto_off()
+                for token in list(user.refresh_tokens.values()):
+                    self.hass.auth.async_remove_refresh_token(token)
+                await self._async_end_session()
+                self._attr_is_on = False
+                LOGGER.debug(
+                    "State write [user_updated_revoke]: %s", self._data.registry_key
+                )
+                self.async_write_ha_state()
+            finally:
+                self._op_in_progress = False
         elif not user.local_only and not self._attr_is_on:
-            # Granted externally: adopt it so it stays time-boxed.
-            if not await self._async_begin_session():
-                await self._async_revoke(user)
-                return
-            self._attr_is_on = True
-            self._schedule_auto_off(timedelta(minutes=self._data.duration_minutes))
-            self.async_write_ha_state()
+            self._op_in_progress = True
+            try:
+                # Granted externally: adopt it so it stays time-boxed.
+                if not await self._async_begin_session():
+                    await self._async_revoke(user)
+                    return
+                self._attr_is_on = True
+                self._schedule_auto_off(timedelta(minutes=self._data.duration_minutes))
+                LOGGER.debug(
+                    "State write [user_updated_adopt]: %s", self._data.registry_key
+                )
+                self.async_write_ha_state()
+            finally:
+                self._op_in_progress = False
