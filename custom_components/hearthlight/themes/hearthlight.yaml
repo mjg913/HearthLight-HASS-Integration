@@ -45,6 +45,10 @@ HearthLight:
   paper-font-caption_-_font-family: 'ui-sans-serif, system-ui, sans-serif'
 
   # ── Controls (shared) ──
+  # HA 2026.x webawesome ha-switch tokens (legacy switch-checked-* kept below
+  # for older frontends, which ignore these and vice versa).
+  ha-switch-checked-background-color: "#fc7114"
+  ha-switch-checked-border-color: "#fc7114"
   switch-checked-button-color: "#fc7114"
   paper-slider-knob-color: "#fc7114"
   paper-slider-knob-start-color: "#fc7114"
@@ -101,6 +105,7 @@ HearthLight:
       switch-checked-track-color: "#fd8838"    # ember-400
       switch-unchecked-button-color: "#ffffff"
       switch-unchecked-track-color: "#c5d1d7"  # slate-200
+      ha-switch-background-color: "#c5d1d7"    # webawesome unchecked track
       slider-bar-color: "#e0e7ea"
       # Inputs
       input-fill-color: "#f4eee4"
@@ -155,6 +160,7 @@ HearthLight:
       switch-checked-track-color: "#bf4b08"    # ember-700
       switch-unchecked-button-color: "#9fb1bb"
       switch-unchecked-track-color: "#3f5360"  # slate-600
+      ha-switch-background-color: "#3f5360"    # webawesome unchecked track
       slider-bar-color: "#324551"              # slate-700
       # Inputs
       input-fill-color: "#253540"

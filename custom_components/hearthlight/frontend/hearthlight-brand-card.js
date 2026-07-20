@@ -318,6 +318,7 @@ class HearthLightRemoteAccessCard extends HTMLElement {
       throw new Error("entity is required (a HearthLight remote-access switch)");
     }
     this._config = config;
+    this._built = false; // config changes rebuild the skeleton
     this._render();
   }
 
@@ -342,10 +343,11 @@ class HearthLightRemoteAccessCard extends HTMLElement {
 
   disconnectedCallback() {
     this._stopCountdown();
+    clearTimeout(this._pwStageTimer);
   }
 
   getCardSize() {
-    return 2;
+    return 3;
   }
 
   static getConfigElement() {
@@ -379,56 +381,29 @@ class HearthLightRemoteAccessCard extends HTMLElement {
 
   _render() {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
-    this._stopCountdown();
     const hass = this._hass;
     const config = this._config;
     if (!hass || !config) return;
 
     const state = hass.states[config.entity];
     if (!state) {
+      this._stopCountdown();
+      this._built = false;
       this.shadowRoot.innerHTML = `<ha-card><div style="padding:16px;color:var(--error-color)">hearthlight-remote-access: entity ${escapeHtml(config.entity)} not found</div></ha-card>`;
       return;
     }
-    const isOn = state.state === "on";
-    const unavailable = state.state === "unavailable";
-    const name = config.name ?? state.attributes.friendly_name ?? "Remote access";
-    const numId = this._numberEntityId(hass);
-    const numState = numId ? hass.states[numId] : null;
-    const showDuration = config.show_duration !== false && numState !== null;
-    const password = isOn ? state.attributes.session_password : undefined;
-    const showPassword = config.show_password !== false && !!password;
+    if (!this._built) this._build();
+    this._update(state);
+  }
+
+  _build() {
     const canCopy = !!(navigator.clipboard && window.isSecureContext);
-
-    this._expiresAt =
-      isOn && state.attributes.expires_at
-        ? new Date(state.attributes.expires_at)
-        : null;
-    const timed = !!this._expiresAt && !Number.isNaN(this._expiresAt.getTime());
-
-    let stateClass = "private";
-    let icon = "mdi:shield-check";
-    let stateLabel = "Private";
-    let helper =
-      "Your system is private. Our team cannot remotely access your home.";
-    if (unavailable) {
-      stateClass = "unavail";
-      icon = "mdi:shield-off-outline";
-      stateLabel = "Unavailable";
-      helper = "This control is unavailable — the managed user may no longer exist.";
-    } else if (isOn) {
-      stateClass = "active";
-      icon = "mdi:headset";
-      stateLabel = "Support access active";
-      helper = "Our team can currently connect to your home to assist you.";
-    }
-
     this.shadowRoot.innerHTML = `
       <style>
         :host { display: block; }
         ha-card {
           padding: 16px;
           --ha-card-border-width: 1.5px;
-          transition: border-color 0.3s ease, box-shadow 0.3s ease;
         }
         ha-card.private { --ha-card-border-color: var(--success-color, #1f9d63); }
         ha-card.active {
@@ -464,6 +439,21 @@ class HearthLightRemoteAccessCard extends HTMLElement {
           margin: 12px 0 0; font-size: 0.9em; line-height: 1.45;
           color: var(--secondary-text-color);
         }
+        /* Collapsible regions: grid-rows trick animates height to auto. */
+        .collapse { display: grid; grid-template-rows: 0fr; }
+        .collapse.open { grid-template-rows: 1fr; }
+        .clip { overflow: hidden; min-height: 0; }
+        /* Password content fades in only after the box finishes expanding. */
+        .pwcontent { opacity: 0; }
+        .pwwrap.shown .pwcontent { opacity: 1; }
+        /* Transitions are enabled only after first paint (.ready), so a card
+           that loads already-active settles instantly with no entrance. */
+        ha-card.ready { transition: border-color 0.3s ease, box-shadow 0.3s ease; }
+        .ready .chip, .ready .state-label {
+          transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        .ready .collapse { transition: grid-template-rows 0.35s ease; }
+        .ready .pwcontent { transition: opacity 0.25s ease; }
         .countdown { margin-top: 8px; font-size: 0.85em; color: var(--secondary-text-color); }
         .pwpanel {
           margin-top: 12px; padding: 12px 12px 10px; text-align: center;
@@ -515,91 +505,227 @@ class HearthLightRemoteAccessCard extends HTMLElement {
         }
         .fallback-toggle[aria-checked="true"]::after { transform: translateX(20px); }
       </style>
-      <ha-card class="${stateClass}">
+      <ha-card>
         <div class="head">
-          <div class="chip"><ha-icon icon="${icon}"></ha-icon></div>
+          <div class="chip"><ha-icon></ha-icon></div>
           <div class="titles">
-            <div class="name">${escapeHtml(name)}</div>
-            <div class="state-label">${stateLabel}</div>
+            <div class="name"></div>
+            <div class="state-label"></div>
           </div>
           <div class="toggle"></div>
         </div>
-        <p class="helper">${helper}</p>
-        ${
-          showPassword
-            ? `<div class="pwpanel">
-                 <div class="pwlabel">Session password</div>
-                 <div class="pwrow">
-                   <span class="pw"></span>
-                   ${canCopy ? `<button class="copy">Copy</button>` : ""}
-                 </div>
-                 <div class="pwhint">Read this to the support technician — it changes every session</div>
-               </div>`
-            : ""
-        }
-        ${isOn && timed ? `<div class="countdown"></div>` : ""}
-        ${
-          showDuration
-            ? `<div class="duration">
-                 <span class="label">Duration</span>
-                 <button class="step" data-dir="-1" aria-label="Decrease duration">−</button>
-                 <span class="value"></span>
-                 <button class="step" data-dir="1" aria-label="Increase duration">＋</button>
-               </div>
-               <div class="hint">Applies the next time access is turned on</div>`
-            : ""
-        }
+        <p class="helper"></p>
+        <div class="collapse pwwrap">
+          <div class="clip">
+            <div class="pwpanel">
+              <div class="pwcontent">
+                <div class="pwlabel">Session password</div>
+                <div class="pwrow">
+                  <span class="pw"></span>
+                  ${canCopy ? `<button class="copy">Copy</button>` : ""}
+                </div>
+                <div class="pwhint">Read this to the support technician — it changes every session</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="collapse cdwrap">
+          <div class="clip"><div class="countdown"></div></div>
+        </div>
+        <div class="durwrap">
+          <div class="duration">
+            <span class="label">Duration</span>
+            <button class="step" data-dir="-1" aria-label="Decrease duration">−</button>
+            <span class="value"></span>
+            <button class="step" data-dir="1" aria-label="Increase duration">＋</button>
+          </div>
+          <div class="hint">Applies the next time access is turned on</div>
+        </div>
       </ha-card>`;
 
-    this.shadowRoot.querySelector(".toggle").append(this._makeToggle(isOn, unavailable));
+    const root = this.shadowRoot;
+    this._card = root.querySelector("ha-card");
+    this._chipIcon = root.querySelector(".chip ha-icon");
+    this._nameEl = root.querySelector(".name");
+    this._stateLabelEl = root.querySelector(".state-label");
+    this._helperEl = root.querySelector(".helper");
+    this._pwWrap = root.querySelector(".pwwrap");
+    this._pwEl = root.querySelector(".pw");
+    this._cdWrap = root.querySelector(".cdwrap");
+    this._countdownEl = root.querySelector(".countdown");
+    this._durWrap = root.querySelector(".durwrap");
+    this._durValueEl = root.querySelector(".duration .value");
+    this._passwordValue = null;
 
-    if (showPassword) {
-      // textContent only — the password must never be interpolated into HTML.
-      this.shadowRoot.querySelector(".pw").textContent = password;
-      const copyBtn = this.shadowRoot.querySelector(".copy");
-      if (copyBtn) {
-        copyBtn.addEventListener("click", async () => {
-          try {
-            await navigator.clipboard.writeText(password);
-            copyBtn.textContent = "Copied";
-            setTimeout(() => {
-              copyBtn.textContent = "Copy";
-            }, 1500);
-          } catch {
-            /* denied: display-only fallback */
-          }
-        });
-      }
+    this._switch = this._makeToggle();
+    root.querySelector(".toggle").append(this._switch);
+
+    const copyBtn = root.querySelector(".copy");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", async () => {
+        if (!this._passwordValue) return;
+        try {
+          await navigator.clipboard.writeText(this._passwordValue);
+          copyBtn.textContent = "Copied";
+          setTimeout(() => {
+            copyBtn.textContent = "Copy";
+          }, 1500);
+        } catch {
+          /* denied: display-only fallback */
+        }
+      });
+    }
+    for (const btn of root.querySelectorAll(".duration .step")) {
+      btn.addEventListener("click", () => {
+        const ctx = this._durationCtx;
+        if (!ctx) return;
+        const next = Math.min(
+          ctx.max,
+          Math.max(ctx.min, ctx.value + Number(btn.dataset.dir) * ctx.step),
+        );
+        if (next !== ctx.value) {
+          this._hass.callService("number", "set_value", {
+            entity_id: ctx.numId,
+            value: next,
+          });
+        }
+      });
     }
 
-    this._countdownEl = this.shadowRoot.querySelector(".countdown");
-    if (this._countdownEl) {
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => this._card.classList.add("ready")),
+    );
+    this._built = true;
+  }
+
+  _update(state) {
+    const config = this._config;
+    const isOn = state.state === "on";
+    const unavailable = state.state === "unavailable";
+    this._isOn = isOn;
+
+    let stateClass = "private";
+    let icon = "mdi:shield-check";
+    let stateLabel = "Private";
+    let helper =
+      "Your system is private. Our team cannot remotely access your home.";
+    if (unavailable) {
+      stateClass = "unavail";
+      icon = "mdi:shield-off-outline";
+      stateLabel = "Unavailable";
+      helper = "This control is unavailable — the managed user may no longer exist.";
+    } else if (isOn) {
+      stateClass = "active";
+      icon = "mdi:headset";
+      stateLabel = "Support access active";
+      helper = "Our team can currently connect to your home to assist you.";
+    }
+
+    this._card.classList.remove("private", "active", "unavail");
+    this._card.classList.add(stateClass);
+    this._chipIcon.setAttribute("icon", icon);
+    this._nameEl.textContent =
+      config.name ?? state.attributes.friendly_name ?? "Remote access";
+    this._stateLabelEl.textContent = stateLabel;
+    this._helperEl.textContent = helper;
+
+    // Programmatic sync fires no change event, so no service-call loop.
+    if (this._switch.tagName === "HA-SWITCH") {
+      this._switch.checked = isOn;
+    } else {
+      this._switch.setAttribute("aria-checked", String(isOn));
+    }
+    this._switch.disabled = unavailable;
+
+    this._expiresAt =
+      isOn && state.attributes.expires_at
+        ? new Date(state.attributes.expires_at)
+        : null;
+    if (this._expiresAt && !Number.isNaN(this._expiresAt.getTime())) {
+      this._cdWrap.classList.add("open");
       this._updateCountdown();
-      this._countdownTimer = setInterval(() => this._updateCountdown(), 1000);
+      if (!this._countdownTimer) {
+        this._countdownTimer = setInterval(() => this._updateCountdown(), 1000);
+      }
+    } else {
+      this._cdWrap.classList.remove("open");
+      this._stopCountdown();
     }
 
+    const password = isOn ? state.attributes.session_password : undefined;
+    this._setPassword(
+      config.show_password !== false && password ? password : null,
+    );
+
+    const numId = this._numberEntityId(this._hass);
+    const numState = numId ? this._hass.states[numId] : null;
+    const showDuration = config.show_duration !== false && numState !== null;
+    this._durWrap.style.display = showDuration ? "" : "none";
     if (showDuration) {
       const value = Number(numState.state);
-      const min = Number(numState.attributes.min ?? 5);
-      const max = Number(numState.attributes.max ?? 1440);
-      const step = Number(numState.attributes.step ?? 5);
-      this.shadowRoot.querySelector(".duration .value").textContent =
-        Number.isFinite(value) ? formatDurationMinutes(value) : numState.state;
-      for (const btn of this.shadowRoot.querySelectorAll(".duration .step")) {
-        btn.addEventListener("click", () => {
-          const next = Math.min(
-            max,
-            Math.max(min, value + Number(btn.dataset.dir) * step),
-          );
-          if (next !== value) {
-            this._hass.callService("number", "set_value", {
-              entity_id: numId,
-              value: next,
-            });
-          }
-        });
-      }
+      this._durationCtx = {
+        numId,
+        value,
+        min: Number(numState.attributes.min ?? 5),
+        max: Number(numState.attributes.max ?? 1440),
+        step: Number(numState.attributes.step ?? 5),
+      };
+      this._durValueEl.textContent = Number.isFinite(value)
+        ? formatDurationMinutes(value)
+        : numState.state;
     }
+  }
+
+  _setPassword(password) {
+    if (password === this._passwordValue) return;
+    // textContent only — the password must never be interpolated into HTML.
+    this._passwordValue = password;
+    const wrap = this._pwWrap;
+    clearTimeout(this._pwStageTimer);
+    if (!password) {
+      // Collapse; the content fades away while the box shrinks.
+      wrap.classList.remove("open", "shown");
+      return;
+    }
+    if (!this._card.classList.contains("ready")) {
+      // First paint of an already-active card: settle instantly.
+      this._pwEl.textContent = password;
+      wrap.classList.add("open", "shown");
+      return;
+    }
+    if (!wrap.classList.contains("open")) {
+      // Grow the box first; fade the content in once fully expanded.
+      this._pwEl.textContent = password;
+      wrap.classList.add("open");
+      this._afterExpand(() => wrap.classList.add("shown"));
+    } else {
+      // New session while open: fade out, swap, fade back in.
+      wrap.classList.remove("shown");
+      this._pwStageTimer = setTimeout(() => {
+        this._pwEl.textContent = password;
+        wrap.classList.add("shown");
+      }, 260);
+    }
+  }
+
+  _afterExpand(callback) {
+    let fired = false;
+    const fire = () => {
+      if (fired) return;
+      fired = true;
+      // Skip if the panel was collapsed again before the expansion finished
+      // (the collapse fires its own grid-template-rows transitionend).
+      if (this._pwWrap.classList.contains("open")) callback();
+    };
+    this._pwWrap.addEventListener(
+      "transitionend",
+      (ev) => {
+        if (ev.propertyName === "grid-template-rows") fire();
+      },
+      { once: true },
+    );
+    // Fallback in case the transitionend event is lost (tab switch, etc.).
+    this._pwStageTimer = setTimeout(fire, 420);
   }
 
   _updateCountdown() {
@@ -612,13 +738,16 @@ class HearthLightRemoteAccessCard extends HTMLElement {
         : "Access is ending…";
   }
 
-  _makeToggle(isOn, disabled) {
+  _makeToggle() {
     let el;
     if (customElements.get("ha-switch")) {
       el = document.createElement("ha-switch");
-      el.checked = isOn;
-      el.disabled = disabled;
-      // The active accent is the brand ember regardless of theme.
+      // The active accent is the brand ember regardless of theme. Both token
+      // generations: webawesome ha-switch (HA 2026.x) + legacy mwc (≤2025.x).
+      el.style.setProperty("--ha-switch-checked-background-color", BRAND_EMBER);
+      el.style.setProperty("--ha-switch-checked-border-color", BRAND_EMBER);
+      el.style.setProperty("--ha-switch-checked-thumb-background-color", "#ffffff");
+      el.style.setProperty("--ha-switch-checked-thumb-border-color", "#ffffff");
       el.style.setProperty("--switch-checked-button-color", BRAND_EMBER);
       el.style.setProperty("--switch-checked-track-color", "rgba(252, 113, 20, 0.5)");
       el.addEventListener("change", () => this._toggle(el.checked));
@@ -627,9 +756,8 @@ class HearthLightRemoteAccessCard extends HTMLElement {
       el = document.createElement("button");
       el.className = "fallback-toggle";
       el.setAttribute("role", "switch");
-      el.setAttribute("aria-checked", String(isOn));
-      el.disabled = disabled;
-      el.addEventListener("click", () => this._toggle(!isOn));
+      el.setAttribute("aria-checked", "false");
+      el.addEventListener("click", () => this._toggle(!this._isOn));
     }
     return el;
   }
