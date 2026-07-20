@@ -41,5 +41,6 @@ jobs:
           import custom_components.hearthlight
           import custom_components.hearthlight.config_flow
           import custom_components.hearthlight.number
+          import custom_components.hearthlight.support_user
           import custom_components.hearthlight.switch
           "

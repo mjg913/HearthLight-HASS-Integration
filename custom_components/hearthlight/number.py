@@ -59,7 +59,7 @@ class HearthLightRemoteAccessDurationNumber(RestoreNumber):
     def __init__(self, data: RemoteAccessData) -> None:
         """Initialize the duration number for one managed user."""
         self._data = data
-        self._attr_unique_id = f"{data.user_id}_remote_access_duration"
+        self._attr_unique_id = f"{data.registry_key}_remote_access_duration"
         self._attr_device_info = remote_access_device_info(data)
         self._attr_native_value = float(DEFAULT_DURATION_MINUTES)
 

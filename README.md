@@ -86,6 +86,23 @@ The card shows the toggle, a live countdown while access is on, and a stepper fo
 > [!NOTE]
 > If you previously wired this up with a pyscript service, `input_boolean`, timer helper, and automation, delete them — the integration replaces the whole stack.
 
+### Support user
+
+Turn on **Provision the HearthLight Support user** in the integration options and the integration creates and owns a `HearthLight Support` admin account end to end — no manual user setup, no stored passwords:
+
+- The account is created **locked**: local-only login and a random password nobody knows.
+- Turning its remote-access switch on generates a fresh one-session password (`####-####-####`) and shows it on the card behind tap-to-reveal — the customer reads it to the support technician. Nothing is stored anywhere, on the box or off it.
+- When the window closes (toggle off, timer, or external revoke), the password is rotated to a random throwaway and all of the account's sessions end. Every session starts from a new password.
+- If someone deletes the account, the integration recreates it immediately — locked. Deleting it accomplishes nothing except rotating its credentials. It is only removed for real by turning the provisioning option off or deleting the integration.
+
+Caveats:
+
+- The session password is a live state attribute while access is on. It is excluded from the recorder (no history), but anything that consumes **live** states off-box (`mqtt_statestream`, InfluxDB exporters, remote-instance links) will see it during an active window.
+- Restarting Home Assistant mid-window generates a **new** password; a previously relayed one stops working.
+- The card's Copy button requires HTTPS; on plain-HTTP installs the row is reveal-only.
+- Requires the default `homeassistant` (username/password) auth provider; installs that customize `auth_providers:` without it get a Repair issue and provisioning is skipped.
+- Not healed automatically: demoting the account from admin or deactivating it (only deletion is).
+
 ## Static brand assets
 
 Every mark ships in COLOR (light backgrounds), and where available DARK (all-slate) and WHITE (dark backgrounds) variants:
@@ -109,6 +126,7 @@ Settings → Devices & Services → HearthLight → **Configure**:
 | Set HearthLight as the backend default theme | on | Re-apply on every HA start |
 | Register the card dashboard resource | on | Auto-register `hearthlight-brand-card.js` (both cards) |
 | Remote access: managed users | none | Create remote-access entities for the selected users |
+| Provision the HearthLight Support user | off | Create and lifecycle-manage the vendor support account |
 
 ### YAML dashboards
 
@@ -123,7 +141,7 @@ lovelace:
 
 ## Removal
 
-Deleting the integration removes the dashboard resource, deletes `themes/hearthlight/`, resets the backend default theme to Home Assistant's default, and restores *local only* login (ending active sessions) for every managed user — remote access never outlives the thing that time-boxes it.
+Deleting the integration removes the dashboard resource, deletes `themes/hearthlight/`, resets the backend default theme to Home Assistant's default, deletes the provisioned support user (if any), and restores *local only* login (ending active sessions) for every managed user — remote access never outlives the thing that time-boxes it.
 
 ## License
 

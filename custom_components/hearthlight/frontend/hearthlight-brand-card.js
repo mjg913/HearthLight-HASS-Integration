@@ -395,6 +395,9 @@ class HearthLightRemoteAccessCard extends HTMLElement {
     const numId = this._numberEntityId(hass);
     const numState = numId ? hass.states[numId] : null;
     const showDuration = config.show_duration !== false && numState !== null;
+    const password = isOn ? state.attributes.session_password : undefined;
+    const showPassword = config.show_password !== false && !!password;
+    const canCopy = !!(navigator.clipboard && window.isSecureContext);
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -404,6 +407,19 @@ class HearthLightRemoteAccessCard extends HTMLElement {
         .name { font-size: 1.1em; font-weight: 500; color: var(--primary-text-color); }
         .status { margin-top: 4px; font-size: 0.9em; color: var(--secondary-text-color); }
         .status.on { color: var(--primary-color); }
+        .password { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+        .password .label { flex: 1; font-size: 0.9em; color: var(--secondary-text-color); }
+        .pw {
+          border: none; background: none; cursor: pointer; padding: 2px 4px;
+          font-family: var(--ha-font-family-code, monospace);
+          font-size: 1em; letter-spacing: 1px; color: var(--primary-text-color);
+        }
+        .copy {
+          border: 1px solid var(--divider-color); border-radius: 12px;
+          background: none; cursor: pointer; padding: 2px 10px;
+          font-size: 0.8em; color: var(--primary-text-color);
+        }
+        .copy:hover { border-color: var(--primary-color); }
         .duration { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--primary-text-color); }
         .duration .label { flex: 1; font-size: 0.9em; color: var(--secondary-text-color); }
         .duration .value { min-width: 64px; text-align: center; }
@@ -434,6 +450,16 @@ class HearthLightRemoteAccessCard extends HTMLElement {
         </div>
         <div class="status${isOn ? " on" : ""}"></div>
         ${
+          showPassword
+            ? `<div class="password">
+                 <span class="label">Session password</span>
+                 <button class="pw" aria-label="Tap to reveal the password"></button>
+                 ${canCopy ? `<button class="copy">Copy</button>` : ""}
+               </div>
+               <div class="hint">Read this to the support technician — it changes every session</div>`
+            : ""
+        }
+        ${
           showDuration
             ? `<div class="duration">
                  <span class="label">Duration</span>
@@ -447,6 +473,32 @@ class HearthLightRemoteAccessCard extends HTMLElement {
       </ha-card>`;
 
     this.shadowRoot.querySelector(".toggle").append(this._makeToggle(isOn, unavailable));
+
+    if (showPassword) {
+      const MASK = "••••-••••-••••";
+      const pwEl = this.shadowRoot.querySelector(".pw");
+      let revealed = false;
+      // textContent only — the password must never be interpolated into HTML.
+      pwEl.textContent = MASK;
+      pwEl.addEventListener("click", () => {
+        revealed = !revealed;
+        pwEl.textContent = revealed ? password : MASK;
+      });
+      const copyBtn = this.shadowRoot.querySelector(".copy");
+      if (copyBtn) {
+        copyBtn.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(password);
+            copyBtn.textContent = "Copied";
+            setTimeout(() => {
+              copyBtn.textContent = "Copy";
+            }, 1500);
+          } catch {
+            /* denied: reveal-only fallback */
+          }
+        });
+      }
+    }
 
     this._statusEl = this.shadowRoot.querySelector(".status");
     this._expiresAt =
@@ -549,6 +601,7 @@ class HearthLightRemoteAccessEditor extends HTMLElement {
     entity: "Remote access switch",
     name: "Name",
     show_duration: "Show the duration setting",
+    show_password: "Show the session password",
   };
 
   _schema = [
@@ -559,6 +612,7 @@ class HearthLightRemoteAccessEditor extends HTMLElement {
     },
     { name: "name", selector: { text: {} } },
     { name: "show_duration", selector: { boolean: {} } },
+    { name: "show_password", selector: { boolean: {} } },
   ];
 
   _render() {
@@ -577,6 +631,7 @@ class HearthLightRemoteAccessEditor extends HTMLElement {
       entity: c.entity ?? "",
       name: c.name ?? "",
       show_duration: c.show_duration ?? true,
+      show_password: c.show_password ?? true,
     };
     this._form.schema = this._schema;
   }
@@ -585,6 +640,7 @@ class HearthLightRemoteAccessEditor extends HTMLElement {
     const config = { ...this._config, ...value };
     if (!config.name) delete config.name;
     if (config.show_duration !== false) delete config.show_duration;
+    if (config.show_password !== false) delete config.show_password;
     this._config = config;
     this.dispatchEvent(
       new CustomEvent("config-changed", {

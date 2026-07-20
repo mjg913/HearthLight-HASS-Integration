@@ -14,9 +14,11 @@ from homeassistant.helpers.selector import (
     SelectSelectorMode,
 )
 
+from . import support_user
 from .const import (
     CONF_MANAGE_THEME,
     CONF_MANAGED_USERS,
+    CONF_PROVISION_SUPPORT_USER,
     CONF_REGISTER_CARD_RESOURCE,
     CONF_SET_DEFAULT_THEME,
     DOMAIN,
@@ -29,6 +31,7 @@ _BASE_OPTIONS = {
     vol.Required(CONF_MANAGE_THEME, default=True): BooleanSelector(),
     vol.Required(CONF_SET_DEFAULT_THEME, default=True): BooleanSelector(),
     vol.Required(CONF_REGISTER_CARD_RESOURCE, default=True): BooleanSelector(),
+    vol.Required(CONF_PROVISION_SUPPORT_USER, default=False): BooleanSelector(),
 }
 
 
@@ -50,6 +53,7 @@ class HearthLightConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_SET_DEFAULT_THEME: True,
                     CONF_REGISTER_CARD_RESOURCE: True,
                     CONF_MANAGED_USERS: [],
+                    CONF_PROVISION_SUPPORT_USER: False,
                 },
             )
         return self.async_show_form(step_id="user", data_schema=vol.Schema({}))
@@ -71,13 +75,18 @@ class HearthLightOptionsFlow(OptionsFlowWithReload):
             return self.async_create_entry(data=user_input)
 
         # No UserSelector exists in HA, so build the picker from the auth
-        # registry ourselves.
+        # registry ourselves. The support user is implicitly managed when
+        # provisioned, so it never appears as a manual choice.
+        support = await support_user.async_find_support_user(self.hass)
+        support_id = support.id if support else None
         users = await self.hass.auth.async_get_users()
         user_options = sorted(
             (
                 SelectOptionDict(value=user.id, label=user.name or user.id)
                 for user in users
-                if not user.system_generated and user.is_active
+                if not user.system_generated
+                and user.is_active
+                and user.id != support_id
             ),
             key=lambda option: option["label"].casefold(),
         )

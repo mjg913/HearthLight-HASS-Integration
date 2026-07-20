@@ -18,13 +18,15 @@
           "manage_theme": "Manage the theme file",
           "set_default_theme": "Set HearthLight as the backend default theme",
           "register_card_resource": "Register the card dashboard resource",
-          "managed_users": "Remote access: managed users"
+          "managed_users": "Remote access: managed users",
+          "provision_support_user": "Provision the HearthLight Support user"
         },
         "data_description": {
           "manage_theme": "Keep themes/hearthlight/hearthlight.yaml installed and up to date. Local edits to that file are overwritten on update.",
           "set_default_theme": "Re-applies HearthLight for light and dark on every Home Assistant start.",
           "register_card_resource": "Makes the HearthLight cards available on dashboards.",
-          "managed_users": "Each selected user gets a remote-access switch and duration setting. Turning the switch on allows that user to log in remotely until the duration elapses; turning it off (or the timer expiring) restores local-only login and ends their active sessions."
+          "managed_users": "Each selected user gets a remote-access switch and duration setting. Turning the switch on allows that user to log in remotely until the duration elapses; turning it off (or the timer expiring) restores local-only login and ends their active sessions.",
+          "provision_support_user": "Creates a managed 'HearthLight Support' admin account owned by the integration. It stays locked (local-only, unknown password) until its remote-access switch is turned on, which generates a one-session password shown on the card. If the account is deleted it is recreated automatically; turning this off (or removing the integration) deletes it."
         }
       }
     }
@@ -45,6 +47,10 @@
     "themes_include_missing": {
       "title": "HearthLight theme is not being loaded",
       "description": "The theme file was installed, but Home Assistant is not loading it. Add a themes include to your configuration.yaml:\n\n```yaml\nfrontend:\n  themes: !include_dir_merge_named themes\n```\n\nThen restart Home Assistant."
+    },
+    "no_ha_auth_provider": {
+      "title": "Support user could not be provisioned",
+      "description": "HearthLight could not create the Support user because this installation has no 'homeassistant' (username/password) auth provider. Your configuration.yaml customizes `auth_providers:` — add the `homeassistant` provider back, or turn off 'Provision the HearthLight Support user' in the integration options."
     },
     "yaml_mode_resource": {
       "title": "Dashboard resource could not be registered automatically",

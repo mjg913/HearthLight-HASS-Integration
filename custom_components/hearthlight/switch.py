@@ -12,8 +12,10 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
+from . import support_user
 from .const import (
     ATTR_EXPIRES_AT,
+    ATTR_SESSION_PASSWORD,
     EVENT_USER_REMOVED,
     EVENT_USER_UPDATED,
     LOGGER,
@@ -53,21 +55,28 @@ class HearthLightRemoteAccessSwitch(SwitchEntity, RestoreEntity):
     _attr_has_entity_name = True
     _attr_translation_key = "remote_access"
     _attr_should_poll = False
+    # Session passwords must never land in the recorder/history.
+    _unrecorded_attributes = frozenset({ATTR_SESSION_PASSWORD})
 
     def __init__(self, data: RemoteAccessData) -> None:
         """Initialize the switch for one managed user."""
         self._data = data
-        self._attr_unique_id = f"{data.user_id}_remote_access"
+        self._attr_unique_id = f"{data.registry_key}_remote_access"
         self._attr_device_info = remote_access_device_info(data)
         self._unsub_auto_off: CALLBACK_TYPE | None = None
         self._expires_at: datetime | None = None
+        # Held in memory only — a restart mid-window mints a fresh one.
+        self._session_password: str | None = None
 
     @property
     def extra_state_attributes(self) -> dict[str, str]:
         """Expose the auto-off deadline; also persists it for restore."""
+        attrs: dict[str, str] = {}
         if self._attr_is_on and self._expires_at is not None:
-            return {ATTR_EXPIRES_AT: self._expires_at.isoformat()}
-        return {}
+            attrs[ATTR_EXPIRES_AT] = self._expires_at.isoformat()
+        if self._attr_is_on and self._session_password is not None:
+            attrs[ATTR_SESSION_PASSWORD] = self._session_password
+        return attrs
 
     async def async_added_to_hass(self) -> None:
         """Restore state, reconciling against the real auth flag."""
@@ -90,17 +99,30 @@ class HearthLightRemoteAccessSwitch(SwitchEntity, RestoreEntity):
 
         if user.local_only:
             # The auth flag is the source of truth; ignore any restored ON.
+            # Defensive scramble in case HA died between grant and scramble.
+            await self._async_end_session()
             self._attr_is_on = False
         elif restored_expiry is not None and restored_expiry <= dt_util.utcnow():
             # Window expired while HA was down: fail closed now.
             await self._async_revoke(user)
+            await self._async_end_session()
             self._attr_is_on = False
         elif restored_expiry is not None:
+            # The old session password is gone with the process; mint a new
+            # one for the remainder of the window (documented behavior).
+            if not await self._async_begin_session():
+                await self._async_revoke(user)
+                self._attr_is_on = False
+                return
             self._attr_is_on = True
             self._schedule_auto_off(restored_expiry - dt_util.utcnow())
         else:
             # Remote access was enabled outside the integration (e.g. the
             # users UI). Adopt it so it is time-boxed rather than open-ended.
+            if not await self._async_begin_session():
+                await self._async_revoke(user)
+                self._attr_is_on = False
+                return
             self._attr_is_on = True
             self._schedule_auto_off(timedelta(minutes=self._data.duration_minutes))
 
@@ -116,6 +138,10 @@ class HearthLightRemoteAccessSwitch(SwitchEntity, RestoreEntity):
         if user is None:
             msg = f"Managed user {self._data.user_id} no longer exists"
             raise HomeAssistantError(msg)
+        if self._data.is_support:
+            # Order matters: never open access without a fresh known
+            # password. A rotation failure raises before access opens.
+            self._session_password = await support_user.async_rotate_password(self.hass)
         await self.hass.auth.async_update_user(user, local_only=False)
         # Turning on while already on deliberately restarts the full window.
         self._schedule_auto_off(timedelta(minutes=self._data.duration_minutes))
@@ -128,8 +154,26 @@ class HearthLightRemoteAccessSwitch(SwitchEntity, RestoreEntity):
         user = await self._async_get_user()
         if user is not None:
             await self._async_revoke(user)
+        await self._async_end_session()
         self._attr_is_on = False
         self.async_write_ha_state()
+
+    async def _async_begin_session(self) -> bool:
+        """Support user only: mint the session password. False = fail closed."""
+        if not self._data.is_support:
+            return True
+        try:
+            self._session_password = await support_user.async_rotate_password(self.hass)
+        except HomeAssistantError:
+            LOGGER.exception("Could not rotate the support session password")
+            return False
+        return True
+
+    async def _async_end_session(self) -> None:
+        """Hide the session password and rotate it to an unknown throwaway."""
+        self._session_password = None
+        if self._data.is_support:
+            await support_user.async_scramble_password(self.hass)
 
     async def _async_get_user(self) -> User | None:
         """Return the managed auth user, if it still exists."""
@@ -168,6 +212,7 @@ class HearthLightRemoteAccessSwitch(SwitchEntity, RestoreEntity):
                 LOGGER.exception(
                     "Could not auto-revoke remote access for %s", self._data.user_name
                 )
+        await self._async_end_session()
         self._attr_is_on = False
         self.async_write_ha_state()
 
@@ -177,6 +222,9 @@ class HearthLightRemoteAccessSwitch(SwitchEntity, RestoreEntity):
         if event.data.get("user_id") != self._data.user_id:
             return
         self._cancel_auto_off()
+        # Account gone: the auth cascade already wiped its provider auth,
+        # so there is nothing left to scramble.
+        self._session_password = None
         self._attr_is_on = False
         self._attr_available = False
         self.async_write_ha_state()
@@ -199,10 +247,14 @@ class HearthLightRemoteAccessSwitch(SwitchEntity, RestoreEntity):
             self._cancel_auto_off()
             for token in list(user.refresh_tokens.values()):
                 self.hass.auth.async_remove_refresh_token(token)
+            await self._async_end_session()
             self._attr_is_on = False
             self.async_write_ha_state()
         elif not user.local_only and not self._attr_is_on:
             # Granted externally: adopt it so it stays time-boxed.
+            if not await self._async_begin_session():
+                await self._async_revoke(user)
+                return
             self._attr_is_on = True
             self._schedule_auto_off(timedelta(minutes=self._data.duration_minutes))
             self.async_write_ha_state()
