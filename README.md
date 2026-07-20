@@ -29,13 +29,18 @@ frontend:
 
 ## Brand card
 
+Fully configurable in the visual card editor (search for "HearthLight Brand" in the card picker), or via YAML:
+
 ```yaml
 type: custom:hearthlight-brand
 asset: combination-mark      # combination-mark | combination-mark-2 | wordmark | wordmark-2
 color_mode: theme            # theme | brand | mono | custom
 height: 96px                 # any CSS length
 alignment: center            # start | center | end
+plain: false                 # true = bare logo, no card background/padding
 ```
+
+Set `plain: true` to render just the mark with no card chrome — like the markdown card's `text_only` — for placing the logo inline on a dashboard without a visible card.
 
 | `color_mode` | Wordmark (slate role) | Flame (ember role) |
 |---|---|---|

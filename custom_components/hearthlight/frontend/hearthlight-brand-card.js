@@ -17,6 +17,7 @@ const ASSETS = [
   "wordmark-2",
 ];
 const COLOR_MODES = ["theme", "brand", "mono", "custom"];
+const ALIGNMENTS = ["start", "center", "end"];
 const BRAND_EMBER = "#fc7114";
 const BRAND_SLATE = "#253540";
 
@@ -79,7 +80,11 @@ class HearthLightBrandCard extends HTMLElement {
   }
 
   getCardSize() {
-    return 2;
+    return this._config?.plain ? 1 : 2;
+  }
+
+  static getConfigElement() {
+    return document.createElement("hearthlight-brand-editor");
   }
 
   static getStubConfig() {
@@ -107,28 +112,163 @@ class HearthLightBrandCard extends HTMLElement {
 
     const { slate, ember } = roleColors(config);
     const height = config.height ?? "96px";
-    const alignment = config.alignment ?? "center";
+    const alignment = ALIGNMENTS.includes(config.alignment)
+      ? config.alignment
+      : "center";
+    const justify = alignment === "center" ? "center" : `flex-${alignment}`;
+    // plain: bare logo with no card chrome, like the markdown card's text_only
+    const wrapperTag = config.plain ? "div" : "ha-card";
 
     this.shadowRoot.innerHTML = `
       <style>
         :host { display: block; }
-        ha-card {
+        .wrap {
           display: flex;
-          justify-content: ${alignment === "start" || alignment === "end" ? `flex-${alignment}` : "center"};
+          justify-content: ${justify};
           align-items: center;
-          padding: 16px;
+          padding: ${config.plain ? "0" : "16px"};
         }
         svg { height: ${height}; width: auto; max-width: 100%; display: block; }
         .cls-1 { fill: ${slate}; }
         .cls-2 { fill: ${ember}; }
       </style>
-      <ha-card></ha-card>`;
-    this.shadowRoot.querySelector("ha-card").append(svg);
+      <${wrapperTag} class="wrap"></${wrapperTag}>`;
+    this.shadowRoot.querySelector(".wrap").append(svg);
+  }
+}
+
+/** Visual editor: standard ha-form driven config UI. */
+class HearthLightBrandEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = config ?? {};
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (this._form) this._form.hass = hass;
+  }
+
+  _labels = {
+    asset: "Brand mark",
+    color_mode: "Color mode",
+    height: "Height (CSS length, e.g. 96px)",
+    alignment: "Alignment",
+    plain: "Logo only (no card background)",
+    color_slate: "Slate role color (CSS color or var())",
+    color_flame: "Flame role color (CSS color or var())",
+  };
+
+  _schema(colorMode) {
+    const opt = (v, label) => ({ value: v, label });
+    const schema = [
+      {
+        name: "asset",
+        selector: {
+          select: {
+            mode: "dropdown",
+            options: [
+              opt("combination-mark", "Combination mark"),
+              opt("combination-mark-2", "Combination mark 2"),
+              opt("wordmark", "Wordmark"),
+              opt("wordmark-2", "Wordmark 2"),
+            ],
+          },
+        },
+      },
+      {
+        name: "color_mode",
+        selector: {
+          select: {
+            mode: "dropdown",
+            options: [
+              opt("theme", "Theme (follows theme colors)"),
+              opt("brand", "Brand (flame always ember)"),
+              opt("mono", "Mono (single text color)"),
+              opt("custom", "Custom colors"),
+            ],
+          },
+        },
+      },
+      { name: "height", selector: { text: {} } },
+      {
+        name: "alignment",
+        selector: {
+          select: {
+            mode: "dropdown",
+            options: [
+              opt("start", "Start"),
+              opt("center", "Center"),
+              opt("end", "End"),
+            ],
+          },
+        },
+      },
+      { name: "plain", selector: { boolean: {} } },
+    ];
+    if (colorMode === "custom") {
+      schema.push(
+        { name: "color_slate", selector: { text: {} } },
+        { name: "color_flame", selector: { text: {} } },
+      );
+    }
+    return schema;
+  }
+
+  _render() {
+    if (!this._form) {
+      this._form = document.createElement("ha-form");
+      this._form.computeLabel = (s) => this._labels[s.name] ?? s.name;
+      this._form.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        this._onValueChanged(ev.detail.value);
+      });
+      this.append(this._form);
+    }
+    const c = this._config;
+    this._form.hass = this._hass;
+    this._form.data = {
+      asset: c.asset ?? "combination-mark",
+      color_mode: c.color_mode ?? "theme",
+      height: c.height ?? "96px",
+      alignment: c.alignment ?? "center",
+      plain: c.plain ?? false,
+      color_slate: c.colors?.slate ?? "",
+      color_flame: c.colors?.flame ?? "",
+    };
+    this._form.schema = this._schema(c.color_mode ?? "theme");
+  }
+
+  _onValueChanged(value) {
+    const { color_slate: slate, color_flame: flame, ...rest } = value;
+    const config = { ...this._config, ...rest };
+    if (config.color_mode === "custom") {
+      config.colors = {};
+      if (slate) config.colors.slate = slate;
+      if (flame) config.colors.flame = flame;
+    } else {
+      delete config.colors;
+    }
+    if (!config.plain) delete config.plain;
+    if (config.height === "96px") delete config.height;
+    if (config.alignment === "center") delete config.alignment;
+    this._config = config;
+    this._render(); // schema may change when color_mode toggles custom
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 }
 
 if (!customElements.get("hearthlight-brand")) {
   customElements.define("hearthlight-brand", HearthLightBrandCard);
+}
+if (!customElements.get("hearthlight-brand-editor")) {
+  customElements.define("hearthlight-brand-editor", HearthLightBrandEditor);
 }
 
 window.customCards = window.customCards || [];

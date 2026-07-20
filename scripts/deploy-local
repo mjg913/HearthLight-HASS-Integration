@@ -13,5 +13,8 @@ if [[ ! -d "/Volumes/config" ]]; then
     exit 1
 fi
 
-rsync -a --delete custom_components/hearthlight/ "$DEST/"
+# --inplace + no ownership/perms/dir-times: SMB mounts reject rsync's
+# temp-file rename strategy and metadata syncing.
+rsync -rlv --inplace --no-perms --no-owner --no-group --omit-dir-times --delete \
+    custom_components/hearthlight/ "$DEST/"
 echo "Deployed to $DEST — restart Home Assistant to load it."
