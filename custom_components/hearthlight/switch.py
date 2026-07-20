@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.auth.const import EVENT_USER_REMOVED, EVENT_USER_UPDATED
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
@@ -13,7 +12,12 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
-from .const import ATTR_EXPIRES_AT, LOGGER
+from .const import (
+    ATTR_EXPIRES_AT,
+    EVENT_USER_REMOVED,
+    EVENT_USER_UPDATED,
+    LOGGER,
+)
 from .data import remote_access_device_info
 
 if TYPE_CHECKING:

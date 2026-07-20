@@ -32,3 +32,14 @@ jobs:
 
       - name: Format
         run: python3 -m ruff format . --check
+
+      # Catches broken imports against the pinned HA floor (requirements.txt)
+      # that hassfest misses because it never imports platform modules.
+      - name: Import check
+        run: |
+          python3 -c "
+          import custom_components.hearthlight
+          import custom_components.hearthlight.config_flow
+          import custom_components.hearthlight.number
+          import custom_components.hearthlight.switch
+          "

@@ -24,5 +24,11 @@ MAX_DURATION_MINUTES = 1440
 
 ATTR_EXPIRES_AT = "expires_at"
 
+# Core bus event types fired by AuthManager. Defined here because their
+# constants live in homeassistant.auth.__init__, which is not a stable
+# import surface; the event names themselves are stable.
+EVENT_USER_REMOVED = "user_removed"
+EVENT_USER_UPDATED = "user_updated"
+
 ISSUE_THEMES_INCLUDE_MISSING = "themes_include_missing"
 ISSUE_YAML_MODE_RESOURCE = "yaml_mode_resource"
