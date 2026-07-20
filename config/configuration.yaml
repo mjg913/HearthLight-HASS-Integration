@@ -1,0 +1,18 @@
+# https://www.home-assistant.io/integrations/default_config/
+default_config:
+
+# https://www.home-assistant.io/integrations/homeassistant/
+homeassistant:
+  debug: true
+
+# https://www.home-assistant.io/integrations/frontend/
+# Mirrors a real-world themes setup so the theme installer can be exercised
+# in the devcontainer. The integration writes themes/hearthlight/hearthlight.yaml.
+frontend:
+  themes: !include_dir_merge_named themes
+
+# https://www.home-assistant.io/integrations/logger/
+logger:
+  default: info
+  logs:
+    custom_components.hearthlight: debug

@@ -1,0 +1,13 @@
+{
+  "domain": "hearthlight",
+  "name": "HearthLight",
+  "codeowners": ["@mjg913"],
+  "config_flow": true,
+  "dependencies": ["frontend", "http", "lovelace"],
+  "documentation": "https://github.com/mjg913/HearthLight-HASS-Integration",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/mjg913/HearthLight-HASS-Integration/issues",
+  "single_config_entry": true,
+  "version": "0.1.0"
+}

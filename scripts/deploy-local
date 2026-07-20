@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Deploy the integration to the live HA instance over the Samba mount for
+# development. Delete the deployed copy before the first HACS install so
+# HACS owns the directory.
+set -e
+
+cd "$(dirname "$0")/.."
+
+DEST="/Volumes/config/custom_components/hearthlight"
+
+if [[ ! -d "/Volumes/config" ]]; then
+    echo "error: /Volumes/config is not mounted" >&2
+    exit 1
+fi
+
+rsync -a --delete custom_components/hearthlight/ "$DEST/"
+echo "Deployed to $DEST — restart Home Assistant to load it."

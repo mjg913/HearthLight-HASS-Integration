@@ -1,0 +1,175 @@
+# ─────────────────────────────────────────────────────────────────────
+# HearthLight — Home Assistant theme
+# Generated from the HearthLight Design System (claude.ai/design)
+# Brand: Ember Orange #fc7114 · Slate #253540 · warm Sand light surfaces
+# Auto light/dark via modes; devices follow their own appearance.
+# ─────────────────────────────────────────────────────────────────────
+HearthLight:
+  # ── Brand ──
+  primary-color: "#fc7114"                # ember-500
+  rgb-primary-color: "252, 113, 20"
+  accent-color: "#f5a623"                 # glow-amber
+  rgb-accent-color: "245, 166, 35"
+  dark-primary-color: "#bf4b08"           # ember-700
+  light-primary-color: "#ffa264"          # ember-300
+
+  # ── Status (solid hues, shared) ──
+  success-color: "#1f9d63"
+  rgb-success-color: "31, 157, 99"
+  warning-color: "#e0a106"
+  rgb-warning-color: "224, 161, 6"
+  error-color: "#d8492b"
+  rgb-error-color: "216, 73, 43"
+  info-color: "#3a86b8"
+  rgb-info-color: "58, 134, 184"
+
+  # ── Shape (radii tokens) ──
+  ha-card-border-radius: "16px"           # --radius-lg: cards
+  ha-dialog-border-radius: "22px"         # --radius-xl: panels/sheets
+  ha-card-border-width: "1px"
+  mdc-shape-small: "8px"                  # --radius-sm
+  mdc-shape-medium: "12px"                # --radius-md: default controls
+  mdc-shape-large: "16px"
+
+  # ── Type (device-native system fonts; Cocon Pro display reserved for v2) ──
+  ha-font-family-body: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+  ha-font-family-heading: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+  ha-font-family-code: 'ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace'
+  mdc-typography-font-family: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+  paper-font-common-base_-_font-family: 'ui-sans-serif, system-ui, sans-serif'
+  paper-font-body1_-_font-family: 'ui-sans-serif, system-ui, sans-serif'
+  paper-font-subhead_-_font-family: 'ui-sans-serif, system-ui, sans-serif'
+  paper-font-headline_-_font-family: 'ui-sans-serif, system-ui, sans-serif'
+  paper-font-title_-_font-family: 'ui-sans-serif, system-ui, sans-serif'
+  paper-font-display1_-_font-family: 'ui-sans-serif, system-ui, sans-serif'
+  paper-font-caption_-_font-family: 'ui-sans-serif, system-ui, sans-serif'
+
+  # ── Controls (shared) ──
+  switch-checked-button-color: "#fc7114"
+  paper-slider-knob-color: "#fc7114"
+  paper-slider-knob-start-color: "#fc7114"
+  paper-slider-active-color: "#fc7114"
+  slider-color: "#fc7114"
+
+  # ── Domain state colors (shared, from DS status semantics) ──
+  state-light-active-color: "#f5a623"          # glow-amber: lit = warm glow
+  state-switch-active-color: "#fc7114"
+  state-fan-active-color: "#fc7114"
+  state-cover-active-color: "#fc7114"
+  state-climate-heat-color: "#fc7114"
+  state-climate-cool-color: "#3a86b8"
+  state-lock-locked-color: "#1f9d63"           # secure = green
+  state-lock-unlocked-color: "#d8492b"
+  state-alarm-armed-color: "#1f9d63"
+  state-alarm-triggered-color: "#d8492b"
+  state-person-home-color: "#1f9d63"
+  state-binary_sensor-active-color: "#f5a623"
+
+  modes:
+    # ────────────────────── LIGHT (Sand + Slate) ──────────────────────
+    light:
+      # Surfaces
+      primary-background-color: "#faf7f2"      # sand-50: surface-page
+      secondary-background-color: "#f4eee4"    # sand-100: surface-sunken
+      card-background-color: "#ffffff"         # surface-raised
+      ha-card-background: "#ffffff"
+      lovelace-background: "#faf7f2"
+      # Text
+      primary-text-color: "#253540"            # text-body (slate-800)
+      secondary-text-color: "#546b78"          # text-muted (slate-500)
+      text-primary-color: "#ffffff"            # text-on-brand
+      disabled-text-color: "#748b98"           # text-subtle (slate-400)
+      # Borders & lines
+      divider-color: "#e0e7ea"                 # border-subtle (slate-100)
+      ha-card-border-color: "#e0e7ea"
+      # Header & sidebar
+      app-header-background-color: "#faf7f2"
+      app-header-text-color: "#1b2831"
+      sidebar-background-color: "#f4eee4"
+      sidebar-text-color: "#253540"
+      sidebar-icon-color: "#748b98"
+      sidebar-selected-icon-color: "#e85d0a"   # text-brand (ember-600, AA)
+      sidebar-selected-text-color: "#e85d0a"
+      # Cards & elevation (shadow-sm, warm slate tint)
+      ha-card-box-shadow: "0 1px 3px rgba(18, 28, 35, 0.08), 0 1px 2px rgba(18, 28, 35, 0.05)"
+      # Icons & states
+      state-icon-color: "#546b78"
+      paper-item-icon-color: "#546b78"
+      # Buttons & interactive
+      mdc-theme-primary: "#e85d0a"             # brand-hover, AA on light
+      # Switches & sliders
+      switch-checked-track-color: "#fd8838"    # ember-400
+      switch-unchecked-button-color: "#ffffff"
+      switch-unchecked-track-color: "#c5d1d7"  # slate-200
+      slider-bar-color: "#e0e7ea"
+      # Inputs
+      input-fill-color: "#f4eee4"
+      input-ink-color: "#253540"
+      input-label-ink-color: "#546b78"
+      input-idle-line-color: "#c5d1d7"
+      input-hover-line-color: "#9fb1bb"
+      input-dropdown-icon-color: "#546b78"
+      input-disabled-ink-color: "#9fb1bb"
+      input-disabled-fill-color: "#faf7f2"
+      # Tables, code, chrome
+      table-row-background-color: "#ffffff"
+      table-row-alternative-background-color: "#faf7f2"
+      markdown-code-background-color: "#f4eee4"
+      code-editor-background-color: "#f4eee4"
+      scrollbar-thumb-color: "#c5d1d7"
+      label-badge-background-color: "#ffffff"
+      label-badge-text-color: "#253540"
+
+    # ────────────────────── DARK (Slate depths) ───────────────────────
+    dark:
+      # Surfaces
+      primary-background-color: "#121c23"      # slate-950: surface-page
+      secondary-background-color: "#0d161c"    # surface-sunken
+      card-background-color: "#1b2831"         # slate-900: surface-raised
+      ha-card-background: "#1b2831"
+      lovelace-background: "#121c23"
+      # Text
+      primary-text-color: "#e0e7ea"            # text-body (slate-100)
+      secondary-text-color: "#9fb1bb"          # text-muted (slate-300)
+      text-primary-color: "#121c23"            # text-on-brand (dark)
+      disabled-text-color: "#748b98"
+      # Borders & lines
+      divider-color: "rgba(255, 255, 255, 0.12)"
+      ha-card-border-color: "rgba(255, 255, 255, 0.06)"
+      # Header & sidebar
+      app-header-background-color: "#121c23"
+      app-header-text-color: "#f5f7f8"
+      sidebar-background-color: "#0d161c"
+      sidebar-text-color: "#e0e7ea"
+      sidebar-icon-color: "#748b98"
+      sidebar-selected-icon-color: "#fd8838"   # text-brand (ember-400)
+      sidebar-selected-text-color: "#fd8838"
+      # Cards & elevation (dark shadow-sm)
+      ha-card-box-shadow: "0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3)"
+      # Icons & states
+      state-icon-color: "#9fb1bb"
+      paper-item-icon-color: "#9fb1bb"
+      # Buttons & interactive
+      mdc-theme-primary: "#fd8838"
+      # Switches & sliders
+      switch-checked-track-color: "#bf4b08"    # ember-700
+      switch-unchecked-button-color: "#9fb1bb"
+      switch-unchecked-track-color: "#3f5360"  # slate-600
+      slider-bar-color: "#324551"              # slate-700
+      # Inputs
+      input-fill-color: "#253540"
+      input-ink-color: "#e0e7ea"
+      input-label-ink-color: "#9fb1bb"
+      input-idle-line-color: "#3f5360"
+      input-hover-line-color: "#546b78"
+      input-dropdown-icon-color: "#9fb1bb"
+      input-disabled-ink-color: "#546b78"
+      input-disabled-fill-color: "#1b2831"
+      # Tables, code, chrome
+      table-row-background-color: "#1b2831"
+      table-row-alternative-background-color: "#121c23"
+      markdown-code-background-color: "#0d161c"
+      code-editor-background-color: "#0d161c"
+      scrollbar-thumb-color: "#3f5360"
+      label-badge-background-color: "#1b2831"
+      label-badge-text-color: "#e0e7ea"
