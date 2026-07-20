@@ -1,4 +1,8 @@
+# aiodns matches HA 2025.8's package_constraints; pycares<5 because aiodns
+# 3.5.0 declares pycares>=4.9.0 unbounded but breaks on pycares 5's API.
+aiodns==3.5.0
 colorlog==6.10.1
 homeassistant==2025.8.0
 pip>=21.3.1
+pycares<5
 ruff==0.14.14
