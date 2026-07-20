@@ -5,6 +5,7 @@ The HearthLight design system as a Home Assistant integration: a warm, ember-and
 - **Theme** — Ember Orange `#fc7114` + Slate `#253540` with warm Sand light surfaces, automatic light/dark via `modes`, device-native system fonts.
 - **Default-theme management** — HearthLight is re-applied as the backend default (light + dark) on every Home Assistant start. No startup automation needed.
 - **Brand card** — `custom:hearthlight-brand` inlines the HearthLight SVG marks and maps their colors to theme variables, so they adapt to light/dark exactly like text.
+- **Remote access control** — `custom:hearthlight-remote-access` plus per-user switch/number entities let the household grant a chosen user (e.g. a support account) remote login for a limited, self-expiring window.
 - **Served assets** — all brand SVGs are available under `/hearthlight/brand/` for picture cards, markdown, or anything else.
 
 ## Installation (HACS)
@@ -60,6 +61,31 @@ colors:
   flame: "#f5a623"
 ```
 
+## Remote access
+
+Grant a Home Assistant user remote login for a limited time — designed for a vendor "support" account the household controls: they deliberately toggle access on, and it revokes itself.
+
+**Setup:** Settings → Devices & Services → HearthLight → **Configure** → pick users under **Remote access: managed users**. Each managed user gets a device with two entities:
+
+- `switch.<user>_remote_access` — ON clears the user's *local only* login restriction; OFF restores it. Turning off — manually or by the timer — also **ends the user's active sessions immediately** by revoking their refresh tokens (this includes local sessions and long-lived access tokens for that user, so manage dedicated accounts, not daily-driver ones).
+- `number.<user>_remote_access_duration` — how long access stays on (5–1440 minutes, default 60). Changes apply the next time access is turned on.
+
+The window survives restarts: if it expires while Home Assistant is down, access is revoked at the next boot. If the *local only* flag is unchecked by hand in the users UI, the integration adopts it immediately and time-boxes it — remote access managed here is never open-ended. Any dashboard user (admin or not) can flip the switch; that's the point — the household authorizes access.
+
+Add the card (search "HearthLight Remote Access" in the card picker), or via YAML:
+
+```yaml
+type: custom:hearthlight-remote-access
+entity: switch.support_remote_access
+name: Support remote access   # optional header override
+show_duration: true           # false hides the duration stepper
+```
+
+The card shows the toggle, a live countdown while access is on, and a stepper for the duration.
+
+> [!NOTE]
+> If you previously wired this up with a pyscript service, `input_boolean`, timer helper, and automation, delete them — the integration replaces the whole stack.
+
 ## Static brand assets
 
 Every mark ships in COLOR (light backgrounds), and where available DARK (all-slate) and WHITE (dark backgrounds) variants:
@@ -81,7 +107,8 @@ Settings → Devices & Services → HearthLight → **Configure**:
 |---|---|---|
 | Manage the theme file | on | Install/overwrite the theme on setup and updates |
 | Set HearthLight as the backend default theme | on | Re-apply on every HA start |
-| Register the brand card dashboard resource | on | Auto-register `hearthlight-brand-card.js` |
+| Register the card dashboard resource | on | Auto-register `hearthlight-brand-card.js` (both cards) |
+| Remote access: managed users | none | Create remote-access entities for the selected users |
 
 ### YAML dashboards
 
@@ -96,7 +123,7 @@ lovelace:
 
 ## Removal
 
-Deleting the integration removes the dashboard resource, deletes `themes/hearthlight/`, and resets the backend default theme to Home Assistant's default.
+Deleting the integration removes the dashboard resource, deletes `themes/hearthlight/`, resets the backend default theme to Home Assistant's default, and restores *local only* login (ending active sessions) for every managed user — remote access never outlives the thing that time-boxes it.
 
 ## License
 

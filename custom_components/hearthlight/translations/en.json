@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "HearthLight",
-        "description": "This installs the HearthLight theme, sets it as the backend default, and registers the `custom:hearthlight-brand` dashboard card. All behaviors can be toggled later in the integration's options."
+        "description": "This installs the HearthLight theme, sets it as the backend default, and registers the `custom:hearthlight-brand` and `custom:hearthlight-remote-access` dashboard cards. All behaviors can be toggled later in the integration's options."
       }
     },
     "abort": {
@@ -17,13 +17,27 @@
         "data": {
           "manage_theme": "Manage the theme file",
           "set_default_theme": "Set HearthLight as the backend default theme",
-          "register_card_resource": "Register the brand card dashboard resource"
+          "register_card_resource": "Register the card dashboard resource",
+          "managed_users": "Remote access: managed users"
         },
         "data_description": {
           "manage_theme": "Keep themes/hearthlight/hearthlight.yaml installed and up to date. Local edits to that file are overwritten on update.",
           "set_default_theme": "Re-applies HearthLight for light and dark on every Home Assistant start.",
-          "register_card_resource": "Makes custom:hearthlight-brand available on dashboards."
+          "register_card_resource": "Makes the HearthLight cards available on dashboards.",
+          "managed_users": "Each selected user gets a remote-access switch and duration setting. Turning the switch on allows that user to log in remotely until the duration elapses; turning it off (or the timer expiring) restores local-only login and ends their active sessions."
         }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "remote_access": {
+        "name": "Remote access"
+      }
+    },
+    "number": {
+      "remote_access_duration": {
+        "name": "Remote access duration"
       }
     }
   },
@@ -34,7 +48,7 @@
     },
     "yaml_mode_resource": {
       "title": "Dashboard resource could not be registered automatically",
-      "description": "Your dashboards are configured in YAML mode, so HearthLight loaded its card globally instead. For a cleaner setup, add the resource to your Lovelace YAML config:\n\n```yaml\nlovelace:\n  resources:\n    - url: /hearthlight/hearthlight-brand-card.js\n      type: module\n```"
+      "description": "Your dashboards are configured in YAML mode, so HearthLight loaded its cards globally instead. For a cleaner setup, add the resource to your Lovelace YAML config:\n\n```yaml\nlovelace:\n  resources:\n    - url: /hearthlight/hearthlight-brand-card.js\n      type: module\n```"
     }
   }
 }

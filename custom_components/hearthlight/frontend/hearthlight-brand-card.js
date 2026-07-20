@@ -279,3 +279,337 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/mjg913/HearthLight-HASS-Integration",
 });
+
+/**
+ * hearthlight-remote-access — time-boxed remote access toggle.
+ *
+ * Fronts the integration's per-user remote-access switch: toggle, live
+ * countdown from the switch's expires_at attribute, and a stepper for the
+ * sibling duration number (found via the shared per-user device).
+ */
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function formatRemaining(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h} h ${m} min`;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function formatDurationMinutes(minutes) {
+  if (minutes >= 60) {
+    const h = Math.floor(minutes / 60);
+    const m = Math.round(minutes % 60);
+    return m ? `${h} h ${m} min` : `${h} h`;
+  }
+  return `${Math.round(minutes)} min`;
+}
+
+class HearthLightRemoteAccessCard extends HTMLElement {
+  setConfig(config) {
+    if (!config.entity) {
+      throw new Error("entity is required (a HearthLight remote-access switch)");
+    }
+    this._config = config;
+    this._render();
+  }
+
+  set hass(hass) {
+    const old = this._hass;
+    this._hass = hass;
+    if (!this._config) return;
+    const sw = this._config.entity;
+    const num = this._numberEntityId(hass);
+    if (
+      !old ||
+      old.states[sw] !== hass.states[sw] ||
+      (num && old.states[num] !== hass.states[num])
+    ) {
+      this._render();
+    }
+  }
+
+  connectedCallback() {
+    if (this._config && this._hass) this._render();
+  }
+
+  disconnectedCallback() {
+    this._stopCountdown();
+  }
+
+  getCardSize() {
+    return 2;
+  }
+
+  static getConfigElement() {
+    return document.createElement("hearthlight-remote-access-editor");
+  }
+
+  static getStubConfig(hass) {
+    const entity = Object.keys(hass?.entities ?? {}).find(
+      (id) =>
+        id.startsWith("switch.") && hass.entities[id].platform === "hearthlight",
+    );
+    return { entity: entity ?? "" };
+  }
+
+  _numberEntityId(hass) {
+    const deviceId = hass?.entities?.[this._config.entity]?.device_id;
+    if (!deviceId) return null;
+    return (
+      Object.keys(hass.entities).find(
+        (id) => id.startsWith("number.") && hass.entities[id].device_id === deviceId,
+      ) ?? null
+    );
+  }
+
+  _stopCountdown() {
+    if (this._countdownTimer) {
+      clearInterval(this._countdownTimer);
+      this._countdownTimer = null;
+    }
+  }
+
+  _render() {
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    this._stopCountdown();
+    const hass = this._hass;
+    const config = this._config;
+    if (!hass || !config) return;
+
+    const state = hass.states[config.entity];
+    if (!state) {
+      this.shadowRoot.innerHTML = `<ha-card><div style="padding:16px;color:var(--error-color)">hearthlight-remote-access: entity ${escapeHtml(config.entity)} not found</div></ha-card>`;
+      return;
+    }
+    const isOn = state.state === "on";
+    const unavailable = state.state === "unavailable";
+    const name = config.name ?? state.attributes.friendly_name ?? "Remote access";
+    const numId = this._numberEntityId(hass);
+    const numState = numId ? hass.states[numId] : null;
+    const showDuration = config.show_duration !== false && numState !== null;
+
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host { display: block; }
+        ha-card { padding: 16px; }
+        .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .name { font-size: 1.1em; font-weight: 500; color: var(--primary-text-color); }
+        .status { margin-top: 4px; font-size: 0.9em; color: var(--secondary-text-color); }
+        .status.on { color: var(--primary-color); }
+        .duration { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--primary-text-color); }
+        .duration .label { flex: 1; font-size: 0.9em; color: var(--secondary-text-color); }
+        .duration .value { min-width: 64px; text-align: center; }
+        .step {
+          width: 32px; height: 32px; border-radius: 50%;
+          border: 1px solid var(--divider-color); background: none;
+          color: var(--primary-text-color); font-size: 1.1em; cursor: pointer;
+        }
+        .step:hover { border-color: var(--primary-color); }
+        .hint { margin-top: 4px; font-size: 0.75em; color: var(--secondary-text-color); }
+        .fallback-toggle {
+          width: 44px; height: 24px; border-radius: 12px; border: none;
+          cursor: pointer; position: relative;
+          background: var(--switch-unchecked-track-color, var(--divider-color));
+        }
+        .fallback-toggle[aria-checked="true"] { background: var(--primary-color); }
+        .fallback-toggle::after {
+          content: ""; position: absolute; top: 2px; left: 2px;
+          width: 20px; height: 20px; border-radius: 50%; background: #fff;
+          transition: transform 0.15s;
+        }
+        .fallback-toggle[aria-checked="true"]::after { transform: translateX(20px); }
+      </style>
+      <ha-card>
+        <div class="head">
+          <div class="name">${escapeHtml(name)}</div>
+          <div class="toggle"></div>
+        </div>
+        <div class="status${isOn ? " on" : ""}"></div>
+        ${
+          showDuration
+            ? `<div class="duration">
+                 <span class="label">Duration</span>
+                 <button class="step" data-dir="-1" aria-label="Decrease duration">−</button>
+                 <span class="value"></span>
+                 <button class="step" data-dir="1" aria-label="Increase duration">＋</button>
+               </div>
+               <div class="hint">Applies the next time access is turned on</div>`
+            : ""
+        }
+      </ha-card>`;
+
+    this.shadowRoot.querySelector(".toggle").append(this._makeToggle(isOn, unavailable));
+
+    this._statusEl = this.shadowRoot.querySelector(".status");
+    this._expiresAt =
+      isOn && state.attributes.expires_at
+        ? new Date(state.attributes.expires_at)
+        : null;
+    this._updateStatus(isOn, unavailable);
+    if (this._expiresAt && !Number.isNaN(this._expiresAt.getTime())) {
+      this._countdownTimer = setInterval(
+        () => this._updateStatus(true, false),
+        1000,
+      );
+    }
+
+    if (showDuration) {
+      const value = Number(numState.state);
+      const min = Number(numState.attributes.min ?? 5);
+      const max = Number(numState.attributes.max ?? 1440);
+      const step = Number(numState.attributes.step ?? 5);
+      this.shadowRoot.querySelector(".duration .value").textContent =
+        Number.isFinite(value) ? formatDurationMinutes(value) : numState.state;
+      for (const btn of this.shadowRoot.querySelectorAll(".duration .step")) {
+        btn.addEventListener("click", () => {
+          const next = Math.min(
+            max,
+            Math.max(min, value + Number(btn.dataset.dir) * step),
+          );
+          if (next !== value) {
+            this._hass.callService("number", "set_value", {
+              entity_id: numId,
+              value: next,
+            });
+          }
+        });
+      }
+    }
+  }
+
+  _updateStatus(isOn, unavailable) {
+    const el = this._statusEl;
+    if (!el) return;
+    if (unavailable) {
+      el.textContent = "Unavailable — the managed user may no longer exist";
+      return;
+    }
+    if (!isOn) {
+      el.textContent = "Remote access is off";
+      return;
+    }
+    if (this._expiresAt && !Number.isNaN(this._expiresAt.getTime())) {
+      const remaining = this._expiresAt - Date.now();
+      el.textContent =
+        remaining > 0
+          ? `Remote access is on — ${formatRemaining(remaining)} remaining`
+          : "Remote access is on — ending…";
+    } else {
+      el.textContent = "Remote access is on";
+    }
+  }
+
+  _makeToggle(isOn, disabled) {
+    let el;
+    if (customElements.get("ha-switch")) {
+      el = document.createElement("ha-switch");
+      el.checked = isOn;
+      el.disabled = disabled;
+      el.addEventListener("change", () => this._toggle(el.checked));
+    } else {
+      // ha-switch not defined (unusual load order): degrade to a CSS toggle.
+      el = document.createElement("button");
+      el.className = "fallback-toggle";
+      el.setAttribute("role", "switch");
+      el.setAttribute("aria-checked", String(isOn));
+      el.disabled = disabled;
+      el.addEventListener("click", () => this._toggle(!isOn));
+    }
+    return el;
+  }
+
+  _toggle(turnOn) {
+    this._hass.callService("switch", turnOn ? "turn_on" : "turn_off", {
+      entity_id: this._config.entity,
+    });
+  }
+}
+
+/** Visual editor for hearthlight-remote-access. */
+class HearthLightRemoteAccessEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = config ?? {};
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (this._form) this._form.hass = hass;
+  }
+
+  _labels = {
+    entity: "Remote access switch",
+    name: "Name",
+    show_duration: "Show the duration setting",
+  };
+
+  _schema = [
+    {
+      name: "entity",
+      required: true,
+      selector: { entity: { filter: { integration: "hearthlight", domain: "switch" } } },
+    },
+    { name: "name", selector: { text: {} } },
+    { name: "show_duration", selector: { boolean: {} } },
+  ];
+
+  _render() {
+    if (!this._form) {
+      this._form = document.createElement("ha-form");
+      this._form.computeLabel = (s) => this._labels[s.name] ?? s.name;
+      this._form.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        this._onValueChanged(ev.detail.value);
+      });
+      this.append(this._form);
+    }
+    const c = this._config;
+    this._form.hass = this._hass;
+    this._form.data = {
+      entity: c.entity ?? "",
+      name: c.name ?? "",
+      show_duration: c.show_duration ?? true,
+    };
+    this._form.schema = this._schema;
+  }
+
+  _onValueChanged(value) {
+    const config = { ...this._config, ...value };
+    if (!config.name) delete config.name;
+    if (config.show_duration !== false) delete config.show_duration;
+    this._config = config;
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+}
+
+if (!customElements.get("hearthlight-remote-access")) {
+  customElements.define("hearthlight-remote-access", HearthLightRemoteAccessCard);
+}
+if (!customElements.get("hearthlight-remote-access-editor")) {
+  customElements.define(
+    "hearthlight-remote-access-editor",
+    HearthLightRemoteAccessEditor,
+  );
+}
+
+window.customCards.push({
+  type: "hearthlight-remote-access",
+  name: "HearthLight Remote Access",
+  description: "Time-boxed remote access toggle for a managed user",
+  preview: false,
+  documentationURL: "https://github.com/mjg913/HearthLight-HASS-Integration",
+});

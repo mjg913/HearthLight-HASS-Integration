@@ -1,0 +1,17 @@
+{
+  "entity": {
+    "switch": {
+      "remote_access": {
+        "default": "mdi:lock",
+        "state": {
+          "on": "mdi:lock-open-variant"
+        }
+      }
+    },
+    "number": {
+      "remote_access_duration": {
+        "default": "mdi:timer-outline"
+      }
+    }
+  }
+}
