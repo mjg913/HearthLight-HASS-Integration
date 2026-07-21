@@ -1147,8 +1147,9 @@ class HearthLightContactCard extends HTMLElement {
       <style>
         :host { display: block; height: 100%; }
         ha-card {
-          height: 100%; box-sizing: border-box; padding: 12px;
-          cursor: pointer; -webkit-tap-highlight-color: transparent;
+          position: relative; height: 100%; box-sizing: border-box;
+          padding: 12px; cursor: pointer;
+          -webkit-tap-highlight-color: transparent;
         }
         .row { display: flex; align-items: center; gap: 12px; }
         .chip {
@@ -1157,7 +1158,10 @@ class HearthLightContactCard extends HTMLElement {
           background: rgba(252, 113, 20, 0.2); color: ${BRAND_EMBER};
           transition: background 180ms ease, color 180ms ease;
         }
-        .chip ha-icon { --mdc-icon-size: 21px; }
+        .chip ha-icon {
+          --mdc-icon-size: 21px;
+          transition: opacity 180ms ease;
+        }
         .titles { flex: 1; min-width: 0; }
         .name {
           display: block; font-size: 14px; font-weight: 700;
@@ -1178,6 +1182,7 @@ class HearthLightContactCard extends HTMLElement {
         .failed .detail { color: var(--error-color, #b3261e); }
       </style>
       <ha-card>
+        <ha-ripple></ha-ripple>
         <div class="row">
           <span class="chip"><ha-icon></ha-icon></span>
           <span class="titles">
@@ -1220,16 +1225,13 @@ class HearthLightContactCard extends HTMLElement {
   }
 
   /**
-   * Open tel:/mailto: the way HA's own url action does. Assigning
-   * window.location.href is swallowed by some companion-app webviews.
+   * Open tel:/mailto: the way HA's own url action does (window.open).
+   * Mobile webviews intercept window.open and hand these schemes to the
+   * OS, but ignore location.href writes and synthetic anchor clicks.
    */
   _openLink(url) {
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.rel = "noreferrer noopener";
-    this.shadowRoot.append(anchor);
-    anchor.click();
-    anchor.remove();
+    const win = window.open(url);
+    if (!win) window.location.assign(url);
   }
 
   async _copy(text) {
@@ -1276,12 +1278,14 @@ class HearthLightContactCard extends HTMLElement {
     }, 1600);
   }
 
-  /** Fade the detail line out, apply the change, fade it back in. */
+  /** Fade the detail line and icon out, apply the change, fade back in. */
   _swapDetail(apply) {
     this._detail.style.opacity = "0";
+    this._icon.style.opacity = "0";
     this._fadeTimer = setTimeout(() => {
       apply();
       this._detail.style.opacity = "1";
+      this._icon.style.opacity = "1";
     }, 180);
   }
 }
