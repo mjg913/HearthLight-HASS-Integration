@@ -431,7 +431,7 @@ class HearthLightRemoteAccessCard extends HTMLElement {
           font-size: 1.05em; font-weight: 600;
           color: var(--primary-text-color);
         }
-        .state-label { margin-top: 2px; font-size: 0.8em; font-weight: 500; }
+        .state-label { margin-top: 2px; font-size: 12px; font-weight: 500; }
         .private .state-label { color: var(--success-color, #1f9d63); }
         .active .state-label { color: ${BRAND_EMBER}; }
         .unavail .state-label { color: var(--disabled-text-color); }
@@ -455,14 +455,14 @@ class HearthLightRemoteAccessCard extends HTMLElement {
         }
         .ready .collapse { transition: grid-template-rows 0.35s ease; }
         .ready .pwcontent { transition: opacity 0.25s ease; }
-        .countdown { margin-top: 8px; font-size: 0.85em; color: var(--secondary-text-color); }
+        .countdown { margin-top: 8px; font-size: 12px; color: ${BRAND_EMBER}; }
         .pwpanel {
           margin-top: 12px; padding: 12px 12px 10px; text-align: center;
           border-radius: var(--mdc-shape-medium, 12px);
           background: var(--secondary-background-color);
         }
         .pwlabel {
-          font-size: 0.7em; font-weight: 600; letter-spacing: 0.09em;
+          font-size: 12px; font-weight: 600; letter-spacing: 0.09em;
           text-transform: uppercase; color: var(--secondary-text-color);
         }
         .pwrow {
@@ -477,10 +477,10 @@ class HearthLightRemoteAccessCard extends HTMLElement {
         .copy {
           border: 1px solid var(--divider-color); border-radius: 12px;
           background: none; cursor: pointer; padding: 2px 10px;
-          font-size: 0.8em; color: var(--primary-text-color);
+          font-size: 12px; color: var(--primary-text-color);
         }
         .copy:hover { border-color: ${BRAND_EMBER}; }
-        .pwhint, .hint { margin-top: 6px; font-size: 0.75em; color: var(--secondary-text-color); }
+        .pwhint { margin-top: 6px; font-size: 12px; color: var(--secondary-text-color); }
         .duration {
           display: flex; align-items: center; gap: 8px; margin-top: 12px;
           color: var(--primary-text-color);
@@ -540,7 +540,6 @@ class HearthLightRemoteAccessCard extends HTMLElement {
             <span class="value"></span>
             <button class="step" data-dir="1" aria-label="Increase duration">＋</button>
           </div>
-          <div class="hint">Applies the next time access is turned on</div>
         </div>
       </ha-card>`;
 
@@ -880,12 +879,6 @@ window.customCards.push({
  */
 
 const HL_DASHBOARD_PATH = "hearthlight-home";
-const HL_VIEWS = [
-  { path: "home", label: "Home", icon: "mdi:home" },
-  { path: "spaces", label: "Spaces", icon: "mdi:sofa" },
-  { path: "system", label: "System", icon: "mdi:cog-outline" },
-  { path: "support", label: "Support", icon: "mdi:lifebuoy" },
-];
 const EXCLUDE_LABEL = "hearthlight-exclude";
 const CONTACT_PHONE_DISPLAY = "(720) 386-1311";
 const CONTACT_PHONE_TEL = "+17203861311";
@@ -911,187 +904,139 @@ const isMobileDevice = () =>
   /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 
 /**
- * hearthlight-navbar — fixed bottom navigation for the HearthLight
- * dashboard, injected into every view by the strategy. Also owns the
- * floating "support access active" pill: a fixed top-center chip shown on
- * every page while any HearthLight remote-access switch is on (the full
- * card lives only on the Support view). Tapping the pill opens Support.
+ * Global "support access active" pill. Mounted once per page load by this
+ * module — which HA loads on every dashboard — so the indicator is
+ * guaranteed on every Lovelace view with no card or per-view config: a
+ * fixed top-center chip that slides in while any HearthLight remote-access
+ * switch is on, with zero layout impact. Tapping it opens the Support
+ * view. Hidden outside Lovelace panels (e.g. Settings).
  */
-class HearthLightNavbar extends HTMLElement {
-  setConfig(config) {
-    this._config = config ?? {};
-    this._dashboard = this._config.dashboard ?? HL_DASHBOARD_PATH;
-    this._built = false;
-    this._render();
-  }
+function initAccessPill() {
+  if (window.__hearthlightAccessPill) return;
+  window.__hearthlightAccessPill = true;
 
-  set hass(hass) {
-    const old = this._hass;
-    this._hass = hass;
-    if (!this._built) return;
-    const ids = hearthlightSwitchIds(hass);
-    if (!old || ids.some((id) => old.states[id] !== hass.states[id])) {
-      this._updatePill();
+  const host = document.createElement("div");
+  host.id = "hearthlight-access-pill";
+  const root = host.attachShadow({ mode: "open" });
+  root.innerHTML = `
+    <style>
+      .pill {
+        position: fixed; top: calc(var(--header-height, 56px) + 12px);
+        left: 50%; z-index: 6;
+        display: flex; align-items: center; gap: 8px;
+        padding: 8px 16px; border: none; border-radius: 999px;
+        background: ${BRAND_EMBER}; color: #fff; cursor: pointer;
+        font-family: inherit; font-size: 13px; font-weight: 600;
+        white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden;
+        box-shadow: 0 4px 16px rgba(252, 113, 20, 0.45);
+        transform: translate(-50%, calc(-100% - var(--header-height, 56px) - 24px));
+        opacity: 0; pointer-events: none;
+        transition: transform 0.35s ease, opacity 0.35s ease;
+      }
+      .pill.shown {
+        transform: translate(-50%, 0); opacity: 1; pointer-events: auto;
+      }
+      .pill ha-icon { --mdc-icon-size: 18px; }
+      .dot {
+        width: 8px; height: 8px; border-radius: 50%; background: #fff;
+        flex: none; animation: hl-pulse 1.6s ease-in-out infinite;
+      }
+      @keyframes hl-pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.35; transform: scale(0.8); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .dot { animation: none; }
+        .pill { transition: opacity 0.35s ease; transform: translate(-50%, 0); }
+      }
+    </style>
+    <button class="pill" aria-label="Support access is active — open the Support page">
+      <span class="dot"></span>
+      <ha-icon icon="mdi:headset"></ha-icon>
+      <span class="pill-text"></span>
+    </button>`;
+  document.body.append(host);
+
+  const pill = root.querySelector(".pill");
+  const pillText = root.querySelector(".pill-text");
+  pill.addEventListener("click", () =>
+    navigatePath(`/${HL_DASHBOARD_PATH}/support`),
+  );
+
+  let expires = null;
+  let activeCount = 0;
+  let timer = null;
+
+  const getHass = () => document.querySelector("home-assistant")?.hass;
+
+  const onLovelacePanel = () => {
+    const hass = getHass();
+    const panel = window.location.pathname.split("/")[1];
+    return Boolean(panel && hass?.panels?.[panel]?.component_name === "lovelace");
+  };
+
+  const stopTimer = () => {
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
     }
-  }
+  };
 
-  connectedCallback() {
-    this._onLocationChanged = this._onLocationChanged ?? (() => this._updateActive());
-    window.addEventListener("location-changed", this._onLocationChanged);
-    window.addEventListener("popstate", this._onLocationChanged);
-    if (this._config) this._render();
-  }
-
-  disconnectedCallback() {
-    window.removeEventListener("location-changed", this._onLocationChanged);
-    window.removeEventListener("popstate", this._onLocationChanged);
-    this._stopPillTimer();
-  }
-
-  getCardSize() {
-    return 2;
-  }
-
-  static getStubConfig() {
-    return {};
-  }
-
-  _render() {
-    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
-    if (!this._built) this._build();
-    this._updateActive();
-    if (this._hass) this._updatePill();
-  }
-
-  _build() {
-    this.shadowRoot.innerHTML = `
-      <style>
-        :host { display: block; }
-        .spacer { height: calc(72px + env(safe-area-inset-bottom)); }
-        nav {
-          position: fixed; left: 0; right: 0; bottom: 0; z-index: 4;
-          display: flex; justify-content: space-around; align-items: stretch;
-          padding-bottom: env(safe-area-inset-bottom);
-          background: var(--card-background-color, #fff);
-          border-top: 1px solid var(--divider-color);
-          box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.08);
-        }
-        nav button {
-          flex: 1; max-width: 168px; padding: 10px 0 12px;
-          display: flex; flex-direction: column; align-items: center; gap: 2px;
-          background: none; border: none; cursor: pointer;
-          color: var(--secondary-text-color); font: inherit;
-          font-size: 0.72em; font-weight: 500; letter-spacing: 0.02em;
-        }
-        nav button ha-icon { --mdc-icon-size: 24px; }
-        nav button.active { color: var(--primary-color, ${BRAND_EMBER}); }
-        /* Floating support-access pill: top center, above content but below
-           dialogs; only the pill itself accepts pointer events. */
-        .pill {
-          position: fixed; top: calc(var(--header-height, 56px) + 12px);
-          left: 50%; transform: translateX(-50%); z-index: 6;
-          display: none; align-items: center; gap: 8px;
-          padding: 8px 16px; border: none; border-radius: 999px;
-          background: ${BRAND_EMBER}; color: #fff; cursor: pointer;
-          font: inherit; font-size: 0.85em; font-weight: 600;
-          white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden;
-          box-shadow: 0 4px 16px rgba(252, 113, 20, 0.45);
-        }
-        .pill.shown { display: flex; }
-        .pill ha-icon { --mdc-icon-size: 18px; }
-        .dot {
-          width: 8px; height: 8px; border-radius: 50%; background: #fff;
-          flex: none; animation: hl-pulse 1.6s ease-in-out infinite;
-        }
-        @keyframes hl-pulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.35; transform: scale(0.8); }
-        }
-        @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
-      </style>
-      <button class="pill" aria-label="Support access is active — open the Support page">
-        <span class="dot"></span>
-        <ha-icon icon="mdi:headset"></ha-icon>
-        <span class="pill-text"></span>
-      </button>
-      <div class="spacer"></div>
-      <nav></nav>`;
-    const nav = this.shadowRoot.querySelector("nav");
-    for (const item of HL_VIEWS) {
-      const btn = document.createElement("button");
-      btn.dataset.path = item.path;
-      const icon = document.createElement("ha-icon");
-      icon.setAttribute("icon", item.icon);
-      const label = document.createElement("span");
-      label.textContent = item.label;
-      btn.append(icon, label);
-      btn.addEventListener("click", () =>
-        navigatePath(`/${this._dashboard}/${item.path}`),
-      );
-      nav.append(btn);
-    }
-    this._pill = this.shadowRoot.querySelector(".pill");
-    this._pillText = this.shadowRoot.querySelector(".pill-text");
-    this._pill.addEventListener("click", () =>
-      navigatePath(`/${this._dashboard}/support`),
-    );
-    this._built = true;
-  }
-
-  _updateActive() {
-    if (!this._built) return;
-    const [, dash, view] = window.location.pathname.split("/");
-    const active = dash === this._dashboard ? view || HL_VIEWS[0].path : null;
-    for (const btn of this.shadowRoot.querySelectorAll("nav button")) {
-      btn.classList.toggle("active", btn.dataset.path === active);
-    }
-  }
-
-  _updatePill() {
-    const hass = this._hass;
-    const active = hearthlightSwitchIds(hass).filter(
-      (id) => hass.states[id]?.state === "on",
-    );
-    this._activeCount = active.length;
-    if (!active.length) {
-      this._pill.classList.remove("shown");
-      this._pillExpires = null;
-      this._stopPillTimer();
-      return;
-    }
-    const expiries = active
-      .map((id) => new Date(hass.states[id].attributes.expires_at ?? NaN).getTime())
-      .filter((t) => !Number.isNaN(t));
-    this._pillExpires = expiries.length ? Math.max(...expiries) : null;
-    this._pill.classList.add("shown");
-    this._tickPill();
-    if (this._pillExpires && !this._pillTimer) {
-      this._pillTimer = setInterval(() => this._tickPill(), 1000);
-    } else if (!this._pillExpires) {
-      this._stopPillTimer();
-    }
-  }
-
-  _tickPill() {
+  const tick = () => {
     let text = "Support access active";
-    if (this._pillExpires) {
-      const remaining = this._pillExpires - Date.now();
+    if (expires) {
+      const remaining = expires - Date.now();
       text =
         remaining > 0
           ? `Support access · ${formatRemaining(remaining)}`
           : "Support access is ending…";
     }
-    if (this._activeCount > 1) text += ` · ${this._activeCount} users`;
-    this._pillText.textContent = text;
-  }
+    if (activeCount > 1) text += ` · ${activeCount} users`;
+    pillText.textContent = text;
+  };
 
-  _stopPillTimer() {
-    if (this._pillTimer) {
-      clearInterval(this._pillTimer);
-      this._pillTimer = null;
+  const update = () => {
+    const hass = getHass();
+    const active = hass
+      ? hearthlightSwitchIds(hass).filter((id) => hass.states[id]?.state === "on")
+      : [];
+    activeCount = active.length;
+    if (!activeCount || !onLovelacePanel()) {
+      pill.classList.remove("shown");
+      expires = null;
+      stopTimer();
+      return;
     }
-  }
+    const expiries = active
+      .map((id) => new Date(hass.states[id].attributes.expires_at ?? NaN).getTime())
+      .filter((t) => !Number.isNaN(t));
+    expires = expiries.length ? Math.max(...expiries) : null;
+    tick();
+    pill.classList.add("shown");
+    if (expires && !timer) timer = setInterval(tick, 1000);
+    if (!expires) stopTimer();
+  };
+
+  window.addEventListener("location-changed", update);
+  window.addEventListener("popstate", update);
+  // Re-check on switch state changes. The deferral lets the main hass
+  // object absorb the same event first (subscription order is unordered).
+  window.hassConnection?.then(({ conn }) => {
+    conn.subscribeEvents((ev) => {
+      if (ev.data?.entity_id?.startsWith("switch.")) setTimeout(update, 0);
+    }, "state_changed");
+  });
+  // First paint: hass/entity registry may not be hydrated yet.
+  const warmup = setInterval(() => {
+    if (getHass()?.entities) {
+      clearInterval(warmup);
+      update();
+    }
+  }, 500);
+  setTimeout(() => clearInterval(warmup), 20000);
 }
+
+initAccessPill();
 
 /**
  * hearthlight-contact — one support contact method per card, chosen with
@@ -1384,9 +1329,6 @@ class HearthLightContactEditor extends HTMLElement {
   }
 }
 
-if (!customElements.get("hearthlight-navbar")) {
-  customElements.define("hearthlight-navbar", HearthLightNavbar);
-}
 if (!customElements.get("hearthlight-contact")) {
   customElements.define("hearthlight-contact", HearthLightContactCard);
 }
@@ -1394,22 +1336,13 @@ if (!customElements.get("hearthlight-contact-editor")) {
   customElements.define("hearthlight-contact-editor", HearthLightContactEditor);
 }
 
-window.customCards.push(
-  {
-    type: "hearthlight-navbar",
-    name: "HearthLight Navbar",
-    description: "Bottom navigation bar used by the HearthLight dashboard",
-    preview: false,
-    documentationURL: "https://github.com/mjg913/HearthLight-HASS-Integration",
-  },
-  {
-    type: "hearthlight-contact",
-    name: "HearthLight Contact",
-    description: "Call or email HearthLight support",
-    preview: true,
-    documentationURL: "https://github.com/mjg913/HearthLight-HASS-Integration",
-  },
-);
+window.customCards.push({
+  type: "hearthlight-contact",
+  name: "HearthLight Contact",
+  description: "Call or email HearthLight support",
+  preview: true,
+  documentationURL: "https://github.com/mjg913/HearthLight-HASS-Integration",
+});
 
 /**
  * The dashboard strategy. Builds the four views from the registry each
@@ -1486,9 +1419,45 @@ function navbarSection() {
   return {
     type: "grid",
     column_span: 4,
-    cards: [{ type: "custom:hearthlight-navbar" }],
+    cards: [{ type: "custom:navbar-card", template: "hearthlight_nav" }],
   };
 }
+
+// Dashboard-root navbar template consumed by the per-view navbar-card
+// one-liners (navbar-card resolves `template:` against this root key).
+// Mirrors the hand-built HearthLight dashboard's navbar exactly.
+const HL_NAVBAR_TEMPLATES = {
+  hearthlight_nav: {
+    routes: [
+      {
+        url: `/${HL_DASHBOARD_PATH}/home`,
+        icon: "mdi:home-outline",
+        icon_selected: "mdi:home",
+        label: "Home",
+      },
+      {
+        url: `/${HL_DASHBOARD_PATH}/spaces`,
+        icon: "mdi:sofa-outline",
+        icon_selected: "mdi:sofa",
+        label: "Spaces",
+      },
+      {
+        url: `/${HL_DASHBOARD_PATH}/system`,
+        icon: "mdi:cog-outline",
+        icon_selected: "mdi:cog",
+        label: "System",
+      },
+      {
+        url: `/${HL_DASHBOARD_PATH}/support`,
+        icon: "mdi:lifebuoy",
+        label: "Support",
+      },
+    ],
+    layout: { auto_padding: { enabled: true } },
+    desktop: { position: "left", show_labels: true },
+    mobile: { show_labels: true },
+  },
+};
 
 function sortByFriendlyName(ids, hass) {
   const name = (id) => hass.states[id]?.attributes?.friendly_name ?? id;
@@ -1862,6 +1831,7 @@ class HearthLightDashboardStrategy {
   static async generate(config, hass) {
     const model = buildDashboardModel(hass);
     return {
+      "navbar-templates": HL_NAVBAR_TEMPLATES,
       views: [
         buildHomeView(model, hass),
         buildSpacesView(model, hass),
