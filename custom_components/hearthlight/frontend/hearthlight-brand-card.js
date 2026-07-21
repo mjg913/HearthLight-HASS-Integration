@@ -925,11 +925,7 @@ function getPanelEl() {
     ?.shadowRoot?.querySelector("home-assistant-main");
   if (!main?.shadowRoot) return null;
   const resolver = deepQuery(main.shadowRoot, "partial-panel-resolver", 3);
-  return (
-    resolver?.querySelector(
-      "ha-panel-lovelace, ha-panel-config, ha-panel-profile",
-    ) ?? null
-  );
+  return resolver?.querySelector("ha-panel-lovelace") ?? null;
 }
 
 const isMobileDevice = () =>
@@ -943,19 +939,15 @@ const isMobileDevice = () =>
  * slides in while any HearthLight remote-access switch is on, with zero
  * layout impact. Tapping it opens the Support view.
  *
- * Placement is context-aware, computed by measuring anchor geometry
- * through open shadow roots (never by injecting into HA's DOM, which Lit
- * re-renders would wipe):
- * - Lovelace panels: top-left of the content surface — hui-root's rect
- *   already reflects the real sidebar width and header height, so when
- *   kiosk-mode hides either, the pill glides toward the viewport corner
- *   with no kiosk-state detection at all.
- * - Settings root (/config/dashboard only, not subpages): right of the
- *   "Settings" title inside the header.
- * - Profile pages: right of the hamburger (or the title when the sidebar
- *   is docked and there is no hamburger).
- * Because the element persists across navigations, top/left transitions
- * animate every move. Hidden on all other panels (map, logbook, …).
+ * Shown on Lovelace panels only, at the top-left of the content surface,
+ * positioned by measuring anchor geometry through open shadow roots
+ * (never by injecting into HA's DOM, which Lit re-renders would wipe):
+ * left tracks hui-root's rect (the sidebar's real width) and top the
+ * position:fixed header's rect — viewport-stable under scroll — so when
+ * kiosk-mode hides either chrome the pill glides toward the viewport
+ * corner with no kiosk-state detection at all. Because the element
+ * persists across navigations, top/left transitions animate every move.
+ * Hidden on all non-Lovelace panels (settings, profile, map, …).
  */
 function initAccessPill() {
   if (window.__hearthlightAccessPill) return;
@@ -1016,17 +1008,12 @@ function initAccessPill() {
 
   const getHass = () => document.querySelector("home-assistant")?.hass;
 
-  // Where the pill may appear, and which anchor strategy applies there.
-  // null = hidden (config subpages, map, logbook, …).
+  // Lovelace panels only — the pill stays hidden everywhere else
+  // (settings, profile, map, logbook, …). In-header placement on the
+  // settings/profile toolbars was tried (v0.6.6–0.6.8) and reverted:
+  // their internal layout varies too much to anchor against reliably.
   const pageContext = () => {
     const parts = window.location.pathname.split("/").filter(Boolean);
-    // The settings root lives at /config/dashboard (the panel router
-    // redirects /config there); deeper subpages stay pill-free.
-    if (parts[0] === "config")
-      return parts.length === 1 || parts[1] === "dashboard"
-        ? "config-root"
-        : null;
-    if (parts[0] === "profile") return "profile";
     const hass = getHass();
     return parts[0] && hass?.panels?.[parts[0]]?.component_name === "lovelace"
       ? "lovelace"
@@ -1035,31 +1022,9 @@ function initAccessPill() {
 
   const HEADER_FALLBACK = 56;
 
-  // The pill never changes size (no compact mode), so the live element's
-  // layout height is safe to read directly.
-  const pillHeight = () => pill.offsetHeight || 34;
-
-  // The fixed top toolbar band on settings/profile panels: viewport top
-  // to --header-height. Centering in the band (not on the title/hamburger
-  // rect, whose own alignment inside the toolbar varies) is what reads as
-  // vertically centered. Kiosk never touches these panels, so the theme
-  // var is trustworthy here.
-  const headerBand = (panel) => ({
-    top: Math.max(0, panel.getBoundingClientRect().top),
-    height:
-      parseFloat(getComputedStyle(panel).getPropertyValue("--header-height")) ||
-      HEADER_FALLBACK,
-  });
-
   // Viewport-based guess for when the panel hasn't rendered yet; the
   // post-navigation re-measure burst glides it to the true anchor.
-  const fallbackPos = (context) => ({
-    left: 12,
-    top:
-      context === "lovelace"
-        ? HEADER_FALLBACK + 12
-        : (HEADER_FALLBACK - pillHeight()) / 2,
-  });
+  const fallbackPos = () => ({ left: 12, top: HEADER_FALLBACK + 12 });
 
   let resizeObserver = null;
   let observed = [];
@@ -1082,46 +1047,6 @@ function initAccessPill() {
     try {
       const panel = getPanelEl();
       if (!panel) return null;
-      const beside = (rect, gap) => {
-        const band = headerBand(panel);
-        return {
-          left: rect.right + gap,
-          top: band.top + (band.height - pillHeight()) / 2,
-        };
-      };
-      if (context === "config-root") {
-        if (panel.localName !== "ha-panel-config") return null;
-        const dash = panel.shadowRoot?.querySelector("ha-config-dashboard");
-        const title = dash
-          ? deepQuery(dash, '[slot="title"], .main-title', 3)
-          : null;
-        const rect = title?.getBoundingClientRect();
-        if (rect?.width) return beside(rect, 12);
-        const panelRect = panel.getBoundingClientRect();
-        return {
-          left: panelRect.left + 12,
-          top: Math.max(0, panelRect.top) + HEADER_FALLBACK + 12,
-        };
-      }
-      if (context === "profile") {
-        if (panel.localName !== "ha-panel-profile") return null;
-        const menu = deepQuery(panel, "ha-menu-button", 4);
-        const menuRect = menu?.getBoundingClientRect();
-        if (menuRect?.width) return beside(menuRect, 8);
-        const title = deepQuery(
-          panel,
-          '[slot="title"], .main-title, .mdc-top-app-bar__title',
-          4,
-        );
-        const rect = title?.getBoundingClientRect();
-        if (rect?.width) return beside(rect, 12);
-        const panelRect = panel.getBoundingClientRect();
-        const band = headerBand(panel);
-        return {
-          left: panelRect.left + 12,
-          top: band.top + (band.height - pillHeight()) / 2,
-        };
-      }
       if (context === "lovelace") {
         if (panel.localName !== "ha-panel-lovelace") return null;
         const huiRoot = deepQuery(panel, "hui-root", 3);
