@@ -1035,22 +1035,21 @@ function initAccessPill() {
 
   const HEADER_FALLBACK = 56;
 
-  // Target pill height, measured off a hidden clone so the live pill's
-  // in-flight transitions can't skew the number. Cached only once ha-icon
-  // is defined — before that the icon has no box.
-  let pillHeight = null;
-  const measurePillHeight = () => {
-    if (pillHeight) return pillHeight;
-    const clone = pill.cloneNode(true);
-    clone.classList.remove("shown");
-    clone.style.cssText =
-      "position:fixed;top:-999px;left:0;visibility:hidden;transition:none;";
-    root.append(clone);
-    const h = clone.offsetHeight;
-    clone.remove();
-    if (h && customElements.get("ha-icon")) pillHeight = h;
-    return h || 34;
-  };
+  // The pill never changes size (no compact mode), so the live element's
+  // layout height is safe to read directly.
+  const pillHeight = () => pill.offsetHeight || 34;
+
+  // The fixed top toolbar band on settings/profile panels: viewport top
+  // to --header-height. Centering in the band (not on the title/hamburger
+  // rect, whose own alignment inside the toolbar varies) is what reads as
+  // vertically centered. Kiosk never touches these panels, so the theme
+  // var is trustworthy here.
+  const headerBand = (panel) => ({
+    top: Math.max(0, panel.getBoundingClientRect().top),
+    height:
+      parseFloat(getComputedStyle(panel).getPropertyValue("--header-height")) ||
+      HEADER_FALLBACK,
+  });
 
   // Viewport-based guess for when the panel hasn't rendered yet; the
   // post-navigation re-measure burst glides it to the true anchor.
@@ -1059,7 +1058,7 @@ function initAccessPill() {
     top:
       context === "lovelace"
         ? HEADER_FALLBACK + 12
-        : (HEADER_FALLBACK - measurePillHeight()) / 2,
+        : (HEADER_FALLBACK - pillHeight()) / 2,
   });
 
   let resizeObserver = null;
@@ -1083,10 +1082,13 @@ function initAccessPill() {
     try {
       const panel = getPanelEl();
       if (!panel) return null;
-      const beside = (rect, gap) => ({
-        left: rect.right + gap,
-        top: rect.top + (rect.height - measurePillHeight()) / 2,
-      });
+      const beside = (rect, gap) => {
+        const band = headerBand(panel);
+        return {
+          left: rect.right + gap,
+          top: band.top + (band.height - pillHeight()) / 2,
+        };
+      };
       if (context === "config-root") {
         if (panel.localName !== "ha-panel-config") return null;
         const dash = panel.shadowRoot?.querySelector("ha-config-dashboard");
@@ -1098,7 +1100,7 @@ function initAccessPill() {
         const panelRect = panel.getBoundingClientRect();
         return {
           left: panelRect.left + 12,
-          top: panelRect.top + HEADER_FALLBACK + 12,
+          top: Math.max(0, panelRect.top) + HEADER_FALLBACK + 12,
         };
       }
       if (context === "profile") {
@@ -1114,9 +1116,10 @@ function initAccessPill() {
         const rect = title?.getBoundingClientRect();
         if (rect?.width) return beside(rect, 12);
         const panelRect = panel.getBoundingClientRect();
+        const band = headerBand(panel);
         return {
           left: panelRect.left + 12,
-          top: panelRect.top + (HEADER_FALLBACK - measurePillHeight()) / 2,
+          top: band.top + (band.height - pillHeight()) / 2,
         };
       }
       if (context === "lovelace") {
@@ -1129,13 +1132,15 @@ function initAccessPill() {
         const surface = huiRoot.getBoundingClientRect();
         const header = huiRoot.shadowRoot?.querySelector(".header");
         observeLovelace(huiRoot, header);
-        // offsetHeight, not the live rect: the header's rect shifts with
-        // scroll, and the pill must hold still. Layout height stays
-        // constant while scrolling and drops to 0 exactly when kiosk-mode
-        // display:none's the header.
+        // The window is HA's scroll container, so hui-root's rect scrolls
+        // with the page — top must come from viewport-stable geometry
+        // only: the position:fixed header's rect, or the viewport top
+        // when kiosk-mode display:none's the header. left doesn't move on
+        // vertical scroll and tracks the sidebar's true width.
+        const headerRect = header?.getBoundingClientRect();
         return {
           left: surface.left + 12,
-          top: surface.top + (header?.offsetHeight ?? 0) + 12,
+          top: (headerRect?.height ? headerRect.bottom : 0) + 12,
         };
       }
       return null;
