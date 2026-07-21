@@ -1100,8 +1100,20 @@ class HearthLightNavbar extends HTMLElement {
  * value and the value text fades to a brief green "Copied!". Never toasts.
  */
 const CONTACT_MODES = {
-  phone: { icon: "mdi:phone", name: "Call Support", detail: CONTACT_PHONE_DISPLAY },
-  email: { icon: "mdi:email", name: "Email Support", detail: CONTACT_EMAIL },
+  phone: {
+    icon: "mdi:phone",
+    name: "Call Support",
+    detail: CONTACT_PHONE_DISPLAY,
+    accent: "#0d9488",
+    accentRgb: "13, 148, 136",
+  },
+  email: {
+    icon: "mdi:email",
+    name: "Email Support",
+    detail: CONTACT_EMAIL,
+    accent: "#5c6bc0",
+    accentRgb: "92, 107, 192",
+  },
 };
 
 class HearthLightContactCard extends HTMLElement {
@@ -1149,7 +1161,7 @@ class HearthLightContactCard extends HTMLElement {
         ha-card {
           position: relative; height: 100%; box-sizing: border-box;
           padding: 12px; -webkit-tap-highlight-color: transparent;
-          --ha-ripple-color: ${BRAND_EMBER};
+          --ha-ripple-color: ${spec.accent};
           --ha-ripple-hover-opacity: 0.04;
           --ha-ripple-pressed-opacity: 0.12;
         }
@@ -1162,7 +1174,7 @@ class HearthLightContactCard extends HTMLElement {
           overflow: hidden; cursor: pointer;
         }
         .background:focus-visible {
-          outline: 2px solid ${BRAND_EMBER}; outline-offset: -2px;
+          outline: 2px solid ${spec.accent}; outline-offset: -2px;
         }
         .row {
           position: relative; pointer-events: none;
@@ -1171,7 +1183,7 @@ class HearthLightContactCard extends HTMLElement {
         .chip {
           width: 42px; height: 42px; border-radius: 50%; flex: none;
           display: flex; align-items: center; justify-content: center;
-          background: rgba(252, 113, 20, 0.2); color: ${BRAND_EMBER};
+          background: rgba(${spec.accentRgb}, 0.2); color: ${spec.accent};
           transition: background 180ms ease, color 180ms ease;
         }
         .chip ha-icon {
