@@ -950,10 +950,10 @@ const isMobileDevice = () =>
  *   already reflects the real sidebar width and header height, so when
  *   kiosk-mode hides either, the pill glides toward the viewport corner
  *   with no kiosk-state detection at all.
- * - Settings root (/config only, not subpages): compact, right of the
+ * - Settings root (/config/dashboard only, not subpages): right of the
  *   "Settings" title inside the header.
- * - Profile pages: compact, right of the hamburger (or the title when the
- *   sidebar is docked and there is no hamburger).
+ * - Profile pages: right of the hamburger (or the title when the sidebar
+ *   is docked and there is no hamburger).
  * Because the element persists across navigations, top/left transitions
  * animate every move. Hidden on all other panels (map, logbook, …).
  */
@@ -976,15 +976,13 @@ function initAccessPill() {
         box-shadow: 0 4px 16px rgba(252, 113, 20, 0.45);
         transform: translateY(-12px); opacity: 0; pointer-events: none;
         transition: top 0.35s ease, left 0.35s ease, transform 0.35s ease,
-          opacity 0.35s ease, padding 0.35s ease, font-size 0.35s ease;
+          opacity 0.35s ease;
       }
       .pill.shown { transform: translateY(0); opacity: 1; pointer-events: auto; }
       /* Applied around position writes that must jump, not glide (e.g.
          placing the still-hidden pill before its entrance slide). */
       .pill.no-motion { transition-property: opacity; }
-      .pill.compact { padding: 4px 10px; font-size: 12px; gap: 6px; }
       .pill ha-icon { --mdc-icon-size: 18px; }
-      .pill.compact ha-icon { --mdc-icon-size: 16px; }
       .pill-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
       .dot {
         width: 8px; height: 8px; border-radius: 50%; background: #fff;
@@ -1022,7 +1020,12 @@ function initAccessPill() {
   // null = hidden (config subpages, map, logbook, …).
   const pageContext = () => {
     const parts = window.location.pathname.split("/").filter(Boolean);
-    if (parts[0] === "config") return parts.length === 1 ? "config-root" : null;
+    // The settings root lives at /config/dashboard (the panel router
+    // redirects /config there); deeper subpages stay pill-free.
+    if (parts[0] === "config")
+      return parts.length === 1 || parts[1] === "dashboard"
+        ? "config-root"
+        : null;
     if (parts[0] === "profile") return "profile";
     const hass = getHass();
     return parts[0] && hass?.panels?.[parts[0]]?.component_name === "lovelace"
@@ -1032,23 +1035,21 @@ function initAccessPill() {
 
   const HEADER_FALLBACK = 56;
 
-  // Target pill height per size mode, measured off a hidden clone so the
-  // live pill's in-flight padding transition can't skew the number. Cached
-  // only once ha-icon is defined — before that the icon has no box.
-  const pillHeights = {};
-  const measurePillHeight = (compact) => {
-    const key = compact ? "c" : "f";
-    if (pillHeights[key]) return pillHeights[key];
+  // Target pill height, measured off a hidden clone so the live pill's
+  // in-flight transitions can't skew the number. Cached only once ha-icon
+  // is defined — before that the icon has no box.
+  let pillHeight = null;
+  const measurePillHeight = () => {
+    if (pillHeight) return pillHeight;
     const clone = pill.cloneNode(true);
     clone.classList.remove("shown");
-    clone.classList.toggle("compact", compact);
     clone.style.cssText =
       "position:fixed;top:-999px;left:0;visibility:hidden;transition:none;";
     root.append(clone);
     const h = clone.offsetHeight;
     clone.remove();
-    if (h && customElements.get("ha-icon")) pillHeights[key] = h;
-    return h || (compact ? 26 : 34);
+    if (h && customElements.get("ha-icon")) pillHeight = h;
+    return h || 34;
   };
 
   // Viewport-based guess for when the panel hasn't rendered yet; the
@@ -1058,8 +1059,7 @@ function initAccessPill() {
     top:
       context === "lovelace"
         ? HEADER_FALLBACK + 12
-        : (HEADER_FALLBACK - measurePillHeight(true)) / 2,
-    compact: context !== "lovelace",
+        : (HEADER_FALLBACK - measurePillHeight()) / 2,
   });
 
   let resizeObserver = null;
@@ -1077,7 +1077,7 @@ function initAccessPill() {
     observed = targets;
   };
 
-  // → {top, left, compact} or null when the anchors aren't rendered yet.
+  // → {top, left} or null when the anchors aren't rendered yet.
   // Rects are viewport-relative, matching position: fixed.
   const measureAnchor = (context) => {
     try {
@@ -1085,8 +1085,7 @@ function initAccessPill() {
       if (!panel) return null;
       const beside = (rect, gap) => ({
         left: rect.right + gap,
-        top: rect.top + (rect.height - measurePillHeight(true)) / 2,
-        compact: true,
+        top: rect.top + (rect.height - measurePillHeight()) / 2,
       });
       if (context === "config-root") {
         if (panel.localName !== "ha-panel-config") return null;
@@ -1100,7 +1099,6 @@ function initAccessPill() {
         return {
           left: panelRect.left + 12,
           top: panelRect.top + HEADER_FALLBACK + 12,
-          compact: false,
         };
       }
       if (context === "profile") {
@@ -1118,9 +1116,7 @@ function initAccessPill() {
         const panelRect = panel.getBoundingClientRect();
         return {
           left: panelRect.left + 12,
-          top:
-            panelRect.top + (HEADER_FALLBACK - measurePillHeight(true)) / 2,
-          compact: true,
+          top: panelRect.top + (HEADER_FALLBACK - measurePillHeight()) / 2,
         };
       }
       if (context === "lovelace") {
@@ -1132,12 +1128,14 @@ function initAccessPill() {
         // either moves the pill toward the corner without kiosk detection.
         const surface = huiRoot.getBoundingClientRect();
         const header = huiRoot.shadowRoot?.querySelector(".header");
-        const headerRect = header?.getBoundingClientRect();
         observeLovelace(huiRoot, header);
+        // offsetHeight, not the live rect: the header's rect shifts with
+        // scroll, and the pill must hold still. Layout height stays
+        // constant while scrolling and drops to 0 exactly when kiosk-mode
+        // display:none's the header.
         return {
           left: surface.left + 12,
-          top: (headerRect?.height ? headerRect.bottom : surface.top) + 12,
-          compact: false,
+          top: surface.top + (header?.offsetHeight ?? 0) + 12,
         };
       }
       return null;
@@ -1151,7 +1149,6 @@ function initAccessPill() {
     pos.maxWidth = Math.max(80, window.innerWidth - pos.left - 8);
     if (
       lastPos &&
-      lastPos.compact === pos.compact &&
       Math.abs(lastPos.left - pos.left) < 1 &&
       Math.abs(lastPos.top - pos.top) < 1 &&
       Math.abs(lastPos.maxWidth - pos.maxWidth) < 1
@@ -1162,7 +1159,6 @@ function initAccessPill() {
     pill.style.top = `${Math.round(pos.top)}px`;
     pill.style.left = `${Math.round(pos.left)}px`;
     pill.style.maxWidth = `${Math.round(pos.maxWidth)}px`;
-    pill.classList.toggle("compact", pos.compact);
     if (snap) {
       void pill.offsetWidth; // flush styles so the jump isn't animated
       pill.classList.remove("no-motion");
