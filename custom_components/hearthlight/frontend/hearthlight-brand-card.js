@@ -1148,10 +1148,26 @@ class HearthLightContactCard extends HTMLElement {
         :host { display: block; height: 100%; }
         ha-card {
           position: relative; height: 100%; box-sizing: border-box;
-          padding: 12px; cursor: pointer;
-          -webkit-tap-highlight-color: transparent;
+          padding: 12px; -webkit-tap-highlight-color: transparent;
+          --ha-ripple-color: ${BRAND_EMBER};
+          --ha-ripple-hover-opacity: 0.04;
+          --ha-ripple-pressed-opacity: 0.12;
         }
-        .row { display: flex; align-items: center; gap: 12px; }
+        /* Interactive layer copied from ha-tile-container: the ripple must
+           live in an absolutely-positioned box clipped to the card radius,
+           or its hover overlay paints past the rounded corners. */
+        .background {
+          position: absolute; top: 0; left: 0; bottom: 0; right: 0;
+          border-radius: var(--ha-card-border-radius, var(--ha-border-radius-lg));
+          overflow: hidden; cursor: pointer;
+        }
+        .background:focus-visible {
+          outline: 2px solid ${BRAND_EMBER}; outline-offset: -2px;
+        }
+        .row {
+          position: relative; pointer-events: none;
+          display: flex; align-items: center; gap: 12px;
+        }
         .chip {
           width: 42px; height: 42px; border-radius: 50%; flex: none;
           display: flex; align-items: center; justify-content: center;
@@ -1182,10 +1198,12 @@ class HearthLightContactCard extends HTMLElement {
         .failed .detail { color: var(--error-color, #b3261e); }
       </style>
       <ha-card>
-        <ha-ripple></ha-ripple>
+        <div class="background" role="button" tabindex="0" aria-labelledby="info">
+          <ha-ripple></ha-ripple>
+        </div>
         <div class="row">
           <span class="chip"><ha-icon></ha-icon></span>
-          <span class="titles">
+          <span class="titles" id="info">
             <span class="name"></span>
             <span class="detail"></span>
           </span>
@@ -1197,9 +1215,14 @@ class HearthLightContactCard extends HTMLElement {
     this._icon.setAttribute("icon", spec.icon);
     this.shadowRoot.querySelector(".name").textContent = spec.name;
     this._detail.textContent = spec.detail;
-    this.shadowRoot
-      .querySelector("ha-card")
-      .addEventListener("click", () => this._activate(spec));
+    const background = this.shadowRoot.querySelector(".background");
+    background.addEventListener("click", () => this._activate(spec));
+    background.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        this._activate(spec);
+      }
+    });
     this._built = true;
   }
 
