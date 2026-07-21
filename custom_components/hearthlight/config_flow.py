@@ -12,11 +12,13 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    TextSelector,
 )
 
 from . import support_user
 from .const import (
     CONF_CREATE_DASHBOARD,
+    CONF_HOME_ADDRESS,
     CONF_MANAGE_THEME,
     CONF_MANAGED_USERS,
     CONF_PROVISION_SUPPORT_USER,
@@ -34,6 +36,9 @@ _BASE_OPTIONS = {
     vol.Required(CONF_REGISTER_CARD_RESOURCE, default=True): BooleanSelector(),
     vol.Required(CONF_CREATE_DASHBOARD, default=True): BooleanSelector(),
     vol.Required(CONF_PROVISION_SUPPORT_USER, default=False): BooleanSelector(),
+    # Street address of this install; the contact card puts it in the
+    # support email subject so tickets identify the home. Empty = omitted.
+    vol.Optional(CONF_HOME_ADDRESS, default=""): TextSelector(),
 }
 
 
@@ -57,6 +62,7 @@ class HearthLightConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_CREATE_DASHBOARD: True,
                     CONF_MANAGED_USERS: [],
                     CONF_PROVISION_SUPPORT_USER: False,
+                    CONF_HOME_ADDRESS: "",
                 },
             )
         return self.async_show_form(step_id="user", data_schema=vol.Schema({}))

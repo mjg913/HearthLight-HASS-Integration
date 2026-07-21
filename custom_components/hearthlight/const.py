@@ -19,6 +19,7 @@ CONF_REGISTER_CARD_RESOURCE = "register_card_resource"
 CONF_CREATE_DASHBOARD = "create_dashboard"
 CONF_MANAGED_USERS = "managed_users"
 CONF_PROVISION_SUPPORT_USER = "provision_support_user"
+CONF_HOME_ADDRESS = "home_address"
 
 # Storage-dashboard url_paths must contain a hyphen (core validation).
 DASHBOARD_URL_PATH = "hearthlight-home"
@@ -31,6 +32,9 @@ SUPPORT_USER_NAME = "HearthLight Support"
 # Stable device/unique_id key: the auth user id changes on every self-heal
 # recreation, so registry identity must not be derived from it.
 SUPPORT_REGISTRY_KEY = "support_user"
+# Install-level service device (home address sensor); not a managed user, so
+# the stale-user cleanup must always treat it as active.
+INSTALL_REGISTRY_KEY = "install"
 
 # Session passwords are dictated over the phone: 12 digits in groups of 4.
 # ~40 bits is adequate here — the only viable attack is online guessing

@@ -887,9 +887,12 @@ const HL_VIEWS = [
   { path: "support", label: "Support", icon: "mdi:lifebuoy" },
 ];
 const EXCLUDE_LABEL = "hearthlight-exclude";
-const CONTACT_PHONE_DISPLAY = "(720) 755-2012";
-const CONTACT_PHONE_TEL = "+17207552012";
+const CONTACT_PHONE_DISPLAY = "(720) 386-1311";
+const CONTACT_PHONE_TEL = "+17203861311";
 const CONTACT_EMAIL = "support@hearthlightintegration.com";
+// Diagnostic sensor published by the integration (options → "Home address");
+// the email card puts its state in the support-request subject line.
+const HOME_ADDRESS_ENTITY = "sensor.hearthlight_home_address";
 
 function navigatePath(path) {
   history.pushState(null, "", path);
@@ -1091,20 +1094,28 @@ class HearthLightNavbar extends HTMLElement {
 }
 
 /**
- * hearthlight-contact — call / email support. On devices that can place
- * calls (mobile) the buttons open tel:/mailto:; elsewhere they copy the
- * value to the clipboard with an inline confirmation, falling back to a
- * toast when the clipboard is unavailable.
+ * hearthlight-contact — one support contact method per card, chosen with
+ * `mode: phone | email`. Mobile devices open tel:/mailto: (the email
+ * subject carries the install's home address); elsewhere a tap copies the
+ * value and the value text fades to a brief green "Copied!". Never toasts.
  */
+const CONTACT_MODES = {
+  phone: { icon: "mdi:phone", name: "Call Support", detail: CONTACT_PHONE_DISPLAY },
+  email: { icon: "mdi:email", name: "Email Support", detail: CONTACT_EMAIL },
+};
+
 class HearthLightContactCard extends HTMLElement {
   setConfig(config) {
-    this._config = config ?? {};
+    if (!CONTACT_MODES[config?.mode]) {
+      throw new Error('hearthlight-contact: set mode to "phone" or "email"');
+    }
+    this._config = config;
     this._built = false;
     this._render();
   }
 
   set hass(hass) {
-    this._hass = hass; // static content; nothing tracks state
+    this._hass = hass; // only read at tap time (email subject)
   }
 
   connectedCallback() {
@@ -1112,12 +1123,12 @@ class HearthLightContactCard extends HTMLElement {
   }
 
   disconnectedCallback() {
-    clearTimeout(this._phoneTimer);
-    clearTimeout(this._emailTimer);
+    clearTimeout(this._revertTimer);
+    clearTimeout(this._fadeTimer);
   }
 
   getCardSize() {
-    return 2;
+    return 1;
   }
 
   static getConfigElement() {
@@ -1125,128 +1136,153 @@ class HearthLightContactCard extends HTMLElement {
   }
 
   static getStubConfig() {
-    return {};
+    return { mode: "phone" };
   }
 
   _render() {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
     if (this._built) return;
-    const config = this._config;
-    const title = config.title ?? "Contact us";
-    const rows = [];
-    if (config.show_phone !== false) {
-      rows.push({
-        kind: "phone",
-        icon: "mdi:phone",
-        name: "Call us",
-        detail: CONTACT_PHONE_DISPLAY,
-        timerKey: "_phoneTimer",
-      });
-    }
-    if (config.show_email !== false) {
-      rows.push({
-        kind: "email",
-        icon: "mdi:email-outline",
-        name: "Email us",
-        detail: CONTACT_EMAIL,
-        timerKey: "_emailTimer",
-      });
-    }
+    const spec = CONTACT_MODES[this._config.mode];
     this.shadowRoot.innerHTML = `
       <style>
-        :host { display: block; }
-        ha-card { padding: 16px; }
-        .title {
-          font-size: 1.05em; font-weight: 600;
-          color: var(--primary-text-color);
+        :host { display: block; height: 100%; }
+        ha-card {
+          height: 100%; box-sizing: border-box; padding: 12px;
+          cursor: pointer; -webkit-tap-highlight-color: transparent;
         }
-        .row {
-          display: flex; align-items: center; gap: 12px; width: 100%;
-          margin-top: 12px; padding: 10px 12px; cursor: pointer;
-          text-align: left; border: 1px solid var(--divider-color);
-          border-radius: var(--mdc-shape-medium, 12px);
-          background: none; color: inherit; font: inherit;
-        }
-        .row:hover { border-color: ${BRAND_EMBER}; }
+        .row { display: flex; align-items: center; gap: 12px; }
         .chip {
-          width: 40px; height: 40px; border-radius: 50%; flex: none;
+          width: 42px; height: 42px; border-radius: 50%; flex: none;
           display: flex; align-items: center; justify-content: center;
-          background: rgba(252, 113, 20, 0.12); color: ${BRAND_EMBER};
+          background: rgba(252, 113, 20, 0.2); color: ${BRAND_EMBER};
+          transition: background 180ms ease, color 180ms ease;
         }
-        .chip ha-icon { --mdc-icon-size: 22px; }
+        .chip ha-icon { --mdc-icon-size: 21px; }
         .titles { flex: 1; min-width: 0; }
-        .name, .detail { display: block; }
-        .name { font-weight: 600; color: var(--primary-text-color); }
-        .detail {
-          margin-top: 2px; font-size: 0.85em;
-          color: var(--secondary-text-color);
+        .name {
+          display: block; font-size: 14px; font-weight: 700;
+          color: var(--primary-text-color);
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
-        .row.copied .chip {
-          background: rgba(var(--rgb-success-color, 31, 157, 99), 0.12);
+        .detail {
+          display: block; margin-top: 2px; font-size: 12px; font-weight: 400;
+          color: var(--secondary-text-color);
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+          transition: opacity 180ms ease, color 180ms ease;
+        }
+        .copied .chip {
+          background: rgba(var(--rgb-success-color, 31, 157, 99), 0.2);
           color: var(--success-color, #1f9d63);
         }
-        .row.copied .detail { color: var(--success-color, #1f9d63); }
+        .copied .detail { color: var(--success-color, #1f9d63); }
+        .failed .detail { color: var(--error-color, #b3261e); }
       </style>
       <ha-card>
-        ${title ? `<div class="title">${escapeHtml(title)}</div>` : ""}
+        <div class="row">
+          <span class="chip"><ha-icon></ha-icon></span>
+          <span class="titles">
+            <span class="name"></span>
+            <span class="detail"></span>
+          </span>
+        </div>
       </ha-card>`;
-    const card = this.shadowRoot.querySelector("ha-card");
-    for (const row of rows) {
-      const btn = document.createElement("button");
-      btn.className = "row";
-      btn.innerHTML = `
-        <span class="chip"><ha-icon></ha-icon></span>
-        <span class="titles">
-          <span class="name"></span>
-          <span class="detail"></span>
-        </span>`;
-      btn.querySelector("ha-icon").setAttribute("icon", row.icon);
-      btn.querySelector(".name").textContent = row.name;
-      btn.querySelector(".detail").textContent = row.detail;
-      btn.addEventListener("click", () => this._activate(row, btn));
-      card.append(btn);
-    }
+    this._row = this.shadowRoot.querySelector(".row");
+    this._icon = this.shadowRoot.querySelector("ha-icon");
+    this._detail = this.shadowRoot.querySelector(".detail");
+    this._icon.setAttribute("icon", spec.icon);
+    this.shadowRoot.querySelector(".name").textContent = spec.name;
+    this._detail.textContent = spec.detail;
+    this.shadowRoot
+      .querySelector("ha-card")
+      .addEventListener("click", () => this._activate(spec));
     this._built = true;
   }
 
-  async _activate(row, btn) {
+  _activate(spec) {
     if (isMobileDevice()) {
-      window.location.href =
-        row.kind === "phone"
+      const url =
+        this._config.mode === "phone"
           ? `tel:${CONTACT_PHONE_TEL}`
-          : `mailto:${CONTACT_EMAIL}`;
+          : `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(this._emailSubject())}`;
+      this._openLink(url);
       return;
     }
-    if (navigator.clipboard && window.isSecureContext) {
-      try {
-        await navigator.clipboard.writeText(row.detail);
-        this._flashCopied(row, btn);
-        return;
-      } catch {
-        /* denied: fall through to the toast */
-      }
-    }
-    this.dispatchEvent(
-      new CustomEvent("hass-notification", {
-        detail: { message: `${row.name}: ${row.detail}` },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    this._copy(spec.detail)
+      .then(() => this._flash(spec, "copied", "Copied!"))
+      .catch(() => this._flash(spec, "failed", "Couldn't copy"));
   }
 
-  _flashCopied(row, btn) {
-    const detail = btn.querySelector(".detail");
-    const icon = btn.querySelector("ha-icon");
-    btn.classList.add("copied");
-    detail.textContent = "Copied to clipboard";
-    icon.setAttribute("icon", "mdi:check");
-    clearTimeout(this[row.timerKey]);
-    this[row.timerKey] = setTimeout(() => {
-      btn.classList.remove("copied");
-      detail.textContent = row.detail;
-      icon.setAttribute("icon", row.icon);
+  _emailSubject() {
+    const state = this._hass?.states?.[HOME_ADDRESS_ENTITY]?.state;
+    const address =
+      state && state !== "unknown" && state !== "unavailable" ? state : "";
+    return address ? `Support Request – ${address}` : "Support Request";
+  }
+
+  /**
+   * Open tel:/mailto: the way HA's own url action does. Assigning
+   * window.location.href is swallowed by some companion-app webviews.
+   */
+  _openLink(url) {
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.rel = "noreferrer noopener";
+    this.shadowRoot.append(anchor);
+    anchor.click();
+    anchor.remove();
+  }
+
+  async _copy(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return;
+      } catch {
+        /* denied: fall through to execCommand */
+      }
+    }
+    // The async Clipboard API does not exist in insecure contexts
+    // (plain-http LAN access); the deprecated execCommand path still does.
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    this.shadowRoot.append(area);
+    area.focus();
+    area.select();
+    let copied = false;
+    try {
+      copied = document.execCommand("copy");
+    } finally {
+      area.remove();
+    }
+    if (!copied) throw new Error("copy rejected");
+  }
+
+  _flash(spec, cls, message) {
+    clearTimeout(this._revertTimer);
+    clearTimeout(this._fadeTimer);
+    this._swapDetail(() => {
+      this._row.classList.add(cls);
+      this._detail.textContent = message;
+      if (cls === "copied") this._icon.setAttribute("icon", "mdi:check");
+    });
+    this._revertTimer = setTimeout(() => {
+      this._swapDetail(() => {
+        this._row.classList.remove("copied", "failed");
+        this._detail.textContent = spec.detail;
+        this._icon.setAttribute("icon", spec.icon);
+      });
     }, 1600);
+  }
+
+  /** Fade the detail line out, apply the change, fade it back in. */
+  _swapDetail(apply) {
+    this._detail.style.opacity = "0";
+    this._fadeTimer = setTimeout(() => {
+      apply();
+      this._detail.style.opacity = "1";
+    }, 180);
   }
 }
 
@@ -1263,15 +1299,23 @@ class HearthLightContactEditor extends HTMLElement {
   }
 
   _labels = {
-    title: "Title",
-    show_phone: "Show the call option",
-    show_email: "Show the email option",
+    mode: "Contact method",
   };
 
   _schema = [
-    { name: "title", selector: { text: {} } },
-    { name: "show_phone", selector: { boolean: {} } },
-    { name: "show_email", selector: { boolean: {} } },
+    {
+      name: "mode",
+      required: true,
+      selector: {
+        select: {
+          mode: "dropdown",
+          options: [
+            { value: "phone", label: "Phone" },
+            { value: "email", label: "Email" },
+          ],
+        },
+      },
+    },
   ];
 
   _render() {
@@ -1284,25 +1328,16 @@ class HearthLightContactEditor extends HTMLElement {
       });
       this.append(this._form);
     }
-    const c = this._config;
     this._form.hass = this._hass;
-    this._form.data = {
-      title: c.title ?? "Contact us",
-      show_phone: c.show_phone ?? true,
-      show_email: c.show_email ?? true,
-    };
+    this._form.data = { mode: this._config.mode ?? "phone" };
     this._form.schema = this._schema;
   }
 
   _onValueChanged(value) {
-    const config = { ...this._config, ...value };
-    if (config.title === "Contact us") delete config.title;
-    if (config.show_phone !== false) delete config.show_phone;
-    if (config.show_email !== false) delete config.show_email;
-    this._config = config;
+    this._config = { ...this._config, mode: value.mode ?? "phone" };
     this.dispatchEvent(
       new CustomEvent("config-changed", {
-        detail: { config },
+        detail: { config: this._config },
         bubbles: true,
         composed: true,
       }),
@@ -1758,7 +1793,22 @@ function buildSupportView(model, hass) {
     type: "grid",
     column_span: 2,
     cards: [
-      { type: "custom:hearthlight-contact", grid_options: { columns: "full" } },
+      {
+        type: "heading",
+        heading: "Contact Us",
+        heading_style: "title",
+        icon: "mdi:account-box",
+      },
+      {
+        type: "custom:hearthlight-contact",
+        mode: "phone",
+        grid_options: { columns: "full" },
+      },
+      {
+        type: "custom:hearthlight-contact",
+        mode: "email",
+        grid_options: { columns: "full" },
+      },
     ],
   });
 

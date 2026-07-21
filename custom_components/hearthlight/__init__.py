@@ -28,6 +28,7 @@ from .const import (
     CONF_SET_DEFAULT_THEME,
     DOMAIN,
     EVENT_USER_REMOVED,
+    INSTALL_REGISTRY_KEY,
     ISSUE_NO_HA_AUTH_PROVIDER,
     LOGGER,
     SUPPORT_REGISTRY_KEY,
@@ -41,7 +42,7 @@ if TYPE_CHECKING:
 
     from .data import HearthLightConfigEntry
 
-PLATFORMS: list[Platform] = [Platform.NUMBER, Platform.SWITCH]
+PLATFORMS: list[Platform] = [Platform.NUMBER, Platform.SENSOR, Platform.SWITCH]
 
 
 async def _async_apply_default_theme(hass: HomeAssistant) -> None:
@@ -210,6 +211,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HearthLightConfigEntry) 
         if support_data is None or user_id != support_data.user_id
     ]
     active_keys = set(managed_users)
+    active_keys.add(INSTALL_REGISTRY_KEY)
     if support_data is not None:
         active_keys.add(SUPPORT_REGISTRY_KEY)
     await _async_cleanup_stale_users(hass, entry, active_keys)

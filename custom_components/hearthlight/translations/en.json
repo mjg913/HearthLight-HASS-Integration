@@ -20,7 +20,8 @@
           "register_card_resource": "Register the card dashboard resource",
           "create_dashboard": "Create the HearthLight dashboard",
           "managed_users": "Remote access: managed users",
-          "provision_support_user": "Provision the HearthLight Support user"
+          "provision_support_user": "Provision the HearthLight Support user",
+          "home_address": "Home address"
         },
         "data_description": {
           "manage_theme": "Keep themes/hearthlight/hearthlight.yaml installed and up to date. Local edits to that file are overwritten on update.",
@@ -28,7 +29,8 @@
           "register_card_resource": "Makes the HearthLight cards available on dashboards.",
           "create_dashboard": "Adds a ready-made HearthLight dashboard (Home, Spaces, System, Support) to the sidebar. It rebuilds itself as areas and devices change. To hide something from it, add a label named exactly 'hearthlight-exclude' to that area, device, or entity. To customize the layout, use the dashboard's edit menu and take control — HearthLight never overwrites a customized dashboard.",
           "managed_users": "Each selected user gets a remote-access switch and duration setting. Turning the switch on allows that user to log in remotely until the duration elapses; turning it off (or the timer expiring) restores local-only login and ends their active sessions.",
-          "provision_support_user": "Creates a managed 'HearthLight Support' admin account owned by the integration. It stays locked (local-only, unknown password) until its remote-access switch is turned on, which generates a one-session password shown on the card. If the account is deleted it is recreated automatically; turning this off (or removing the integration) deletes it."
+          "provision_support_user": "Creates a managed 'HearthLight Support' admin account owned by the integration. It stays locked (local-only, unknown password) until its remote-access switch is turned on, which generates a one-session password shown on the card. If the account is deleted it is recreated automatically; turning this off (or removing the integration) deletes it.",
+          "home_address": "Street address of this home. The Support page's email card includes it in the subject line so support tickets identify the install. Leave empty to omit it."
         }
       }
     }
@@ -42,6 +44,11 @@
     "number": {
       "remote_access_duration": {
         "name": "Remote access duration"
+      }
+    },
+    "sensor": {
+      "home_address": {
+        "name": "Home address"
       }
     }
   },
