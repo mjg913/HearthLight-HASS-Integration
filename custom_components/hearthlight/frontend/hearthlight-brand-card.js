@@ -899,6 +899,39 @@ function hearthlightSwitchIds(hass) {
   );
 }
 
+// Breadth-first search through light DOM and open shadow roots. Resilience
+// primitive for anchoring UI to HA internals: exact selectors are fast
+// paths, this tolerates HA renaming intermediate wrapper elements.
+function deepQuery(rootEl, selector, maxDepth = 6) {
+  let roots = [rootEl?.shadowRoot ?? rootEl].filter(Boolean);
+  for (let depth = 0; depth <= maxDepth && roots.length; depth++) {
+    const next = [];
+    for (const root of roots) {
+      const hit = root.querySelector?.(selector);
+      if (hit) return hit;
+      for (const el of root.querySelectorAll?.("*") ?? []) {
+        if (el.shadowRoot) next.push(el.shadowRoot);
+      }
+    }
+    roots = next;
+  }
+  return null;
+}
+
+// The currently routed panel element (light-DOM child of the resolver).
+function getPanelEl() {
+  const main = document
+    .querySelector("home-assistant")
+    ?.shadowRoot?.querySelector("home-assistant-main");
+  if (!main?.shadowRoot) return null;
+  const resolver = deepQuery(main.shadowRoot, "partial-panel-resolver", 3);
+  return (
+    resolver?.querySelector(
+      "ha-panel-lovelace, ha-panel-config, ha-panel-profile",
+    ) ?? null
+  );
+}
+
 const isMobileDevice = () =>
   navigator.userAgentData?.mobile ??
   /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
@@ -906,10 +939,23 @@ const isMobileDevice = () =>
 /**
  * Global "support access active" pill. Mounted once per page load by this
  * module — which HA loads on every dashboard — so the indicator is
- * guaranteed on every Lovelace view with no card or per-view config: a
- * fixed top-center chip that slides in while any HearthLight remote-access
- * switch is on, with zero layout impact. Tapping it opens the Support
- * view. Hidden outside Lovelace panels (e.g. Settings).
+ * guaranteed with no card or per-view config: a single fixed chip that
+ * slides in while any HearthLight remote-access switch is on, with zero
+ * layout impact. Tapping it opens the Support view.
+ *
+ * Placement is context-aware, computed by measuring anchor geometry
+ * through open shadow roots (never by injecting into HA's DOM, which Lit
+ * re-renders would wipe):
+ * - Lovelace panels: top-left of the content surface — hui-root's rect
+ *   already reflects the real sidebar width and header height, so when
+ *   kiosk-mode hides either, the pill glides toward the viewport corner
+ *   with no kiosk-state detection at all.
+ * - Settings root (/config only, not subpages): compact, right of the
+ *   "Settings" title inside the header.
+ * - Profile pages: compact, right of the hamburger (or the title when the
+ *   sidebar is docked and there is no hamburger).
+ * Because the element persists across navigations, top/left transitions
+ * animate every move. Hidden on all other panels (map, logbook, …).
  */
 function initAccessPill() {
   if (window.__hearthlightAccessPill) return;
@@ -921,22 +967,25 @@ function initAccessPill() {
   root.innerHTML = `
     <style>
       .pill {
-        position: fixed; top: calc(var(--header-height, 56px) + 12px);
-        left: 50%; z-index: 6;
+        position: fixed; top: 12px; left: 12px; z-index: 6;
         display: flex; align-items: center; gap: 8px;
         padding: 8px 16px; border: none; border-radius: 999px;
         background: ${BRAND_EMBER}; color: #fff; cursor: pointer;
         font-family: inherit; font-size: 13px; font-weight: 600;
         white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden;
         box-shadow: 0 4px 16px rgba(252, 113, 20, 0.45);
-        transform: translate(-50%, calc(-100% - var(--header-height, 56px) - 24px));
-        opacity: 0; pointer-events: none;
-        transition: transform 0.35s ease, opacity 0.35s ease;
+        transform: translateY(-12px); opacity: 0; pointer-events: none;
+        transition: top 0.35s ease, left 0.35s ease, transform 0.35s ease,
+          opacity 0.35s ease, padding 0.35s ease, font-size 0.35s ease;
       }
-      .pill.shown {
-        transform: translate(-50%, 0); opacity: 1; pointer-events: auto;
-      }
+      .pill.shown { transform: translateY(0); opacity: 1; pointer-events: auto; }
+      /* Applied around position writes that must jump, not glide (e.g.
+         placing the still-hidden pill before its entrance slide). */
+      .pill.no-motion { transition-property: opacity; }
+      .pill.compact { padding: 4px 10px; font-size: 12px; gap: 6px; }
       .pill ha-icon { --mdc-icon-size: 18px; }
+      .pill.compact ha-icon { --mdc-icon-size: 16px; }
+      .pill-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
       .dot {
         width: 8px; height: 8px; border-radius: 50%; background: #fff;
         flex: none; animation: hl-pulse 1.6s ease-in-out infinite;
@@ -947,7 +996,7 @@ function initAccessPill() {
       }
       @media (prefers-reduced-motion: reduce) {
         .dot { animation: none; }
-        .pill { transition: opacity 0.35s ease; transform: translate(-50%, 0); }
+        .pill { transition-property: opacity; transform: translateY(0); }
       }
     </style>
     <button class="pill" aria-label="Support access is active — open the Support page">
@@ -969,10 +1018,193 @@ function initAccessPill() {
 
   const getHass = () => document.querySelector("home-assistant")?.hass;
 
-  const onLovelacePanel = () => {
+  // Where the pill may appear, and which anchor strategy applies there.
+  // null = hidden (config subpages, map, logbook, …).
+  const pageContext = () => {
+    const parts = window.location.pathname.split("/").filter(Boolean);
+    if (parts[0] === "config") return parts.length === 1 ? "config-root" : null;
+    if (parts[0] === "profile") return "profile";
     const hass = getHass();
-    const panel = window.location.pathname.split("/")[1];
-    return Boolean(panel && hass?.panels?.[panel]?.component_name === "lovelace");
+    return parts[0] && hass?.panels?.[parts[0]]?.component_name === "lovelace"
+      ? "lovelace"
+      : null;
+  };
+
+  const HEADER_FALLBACK = 56;
+
+  // Target pill height per size mode, measured off a hidden clone so the
+  // live pill's in-flight padding transition can't skew the number. Cached
+  // only once ha-icon is defined — before that the icon has no box.
+  const pillHeights = {};
+  const measurePillHeight = (compact) => {
+    const key = compact ? "c" : "f";
+    if (pillHeights[key]) return pillHeights[key];
+    const clone = pill.cloneNode(true);
+    clone.classList.remove("shown");
+    clone.classList.toggle("compact", compact);
+    clone.style.cssText =
+      "position:fixed;top:-999px;left:0;visibility:hidden;transition:none;";
+    root.append(clone);
+    const h = clone.offsetHeight;
+    clone.remove();
+    if (h && customElements.get("ha-icon")) pillHeights[key] = h;
+    return h || (compact ? 26 : 34);
+  };
+
+  // Viewport-based guess for when the panel hasn't rendered yet; the
+  // post-navigation re-measure burst glides it to the true anchor.
+  const fallbackPos = (context) => ({
+    left: 12,
+    top:
+      context === "lovelace"
+        ? HEADER_FALLBACK + 12
+        : (HEADER_FALLBACK - measurePillHeight(true)) / 2,
+    compact: context !== "lovelace",
+  });
+
+  let resizeObserver = null;
+  let observed = [];
+  const observeLovelace = (...els) => {
+    const targets = els.filter(Boolean);
+    if (
+      targets.length === observed.length &&
+      targets.every((el, i) => el === observed[i])
+    )
+      return;
+    resizeObserver ??= new ResizeObserver(() => rafReposition());
+    resizeObserver.disconnect();
+    targets.forEach((el) => resizeObserver.observe(el));
+    observed = targets;
+  };
+
+  // → {top, left, compact} or null when the anchors aren't rendered yet.
+  // Rects are viewport-relative, matching position: fixed.
+  const measureAnchor = (context) => {
+    try {
+      const panel = getPanelEl();
+      if (!panel) return null;
+      const beside = (rect, gap) => ({
+        left: rect.right + gap,
+        top: rect.top + (rect.height - measurePillHeight(true)) / 2,
+        compact: true,
+      });
+      if (context === "config-root") {
+        if (panel.localName !== "ha-panel-config") return null;
+        const dash = panel.shadowRoot?.querySelector("ha-config-dashboard");
+        const title = dash
+          ? deepQuery(dash, '[slot="title"], .main-title', 3)
+          : null;
+        const rect = title?.getBoundingClientRect();
+        if (rect?.width) return beside(rect, 12);
+        const panelRect = panel.getBoundingClientRect();
+        return {
+          left: panelRect.left + 12,
+          top: panelRect.top + HEADER_FALLBACK + 12,
+          compact: false,
+        };
+      }
+      if (context === "profile") {
+        if (panel.localName !== "ha-panel-profile") return null;
+        const menu = deepQuery(panel, "ha-menu-button", 4);
+        const menuRect = menu?.getBoundingClientRect();
+        if (menuRect?.width) return beside(menuRect, 8);
+        const title = deepQuery(
+          panel,
+          '[slot="title"], .main-title, .mdc-top-app-bar__title',
+          4,
+        );
+        const rect = title?.getBoundingClientRect();
+        if (rect?.width) return beside(rect, 12);
+        const panelRect = panel.getBoundingClientRect();
+        return {
+          left: panelRect.left + 12,
+          top:
+            panelRect.top + (HEADER_FALLBACK - measurePillHeight(true)) / 2,
+          compact: true,
+        };
+      }
+      if (context === "lovelace") {
+        if (panel.localName !== "ha-panel-lovelace") return null;
+        const huiRoot = deepQuery(panel, "hui-root", 3);
+        if (!huiRoot) return null;
+        // The content surface: its left edge is the sidebar's true width
+        // and the header's live rect its true height, so kiosk-mode hiding
+        // either moves the pill toward the corner without kiosk detection.
+        const surface = huiRoot.getBoundingClientRect();
+        const header = huiRoot.shadowRoot?.querySelector(".header");
+        const headerRect = header?.getBoundingClientRect();
+        observeLovelace(huiRoot, header);
+        return {
+          left: surface.left + 12,
+          top: (headerRect?.height ? headerRect.bottom : surface.top) + 12,
+          compact: false,
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  let lastPos = null;
+  const applyPosition = (pos, snap) => {
+    pos.maxWidth = Math.max(80, window.innerWidth - pos.left - 8);
+    if (
+      lastPos &&
+      lastPos.compact === pos.compact &&
+      Math.abs(lastPos.left - pos.left) < 1 &&
+      Math.abs(lastPos.top - pos.top) < 1 &&
+      Math.abs(lastPos.maxWidth - pos.maxWidth) < 1
+    )
+      return;
+    lastPos = pos;
+    if (snap) pill.classList.add("no-motion");
+    pill.style.top = `${Math.round(pos.top)}px`;
+    pill.style.left = `${Math.round(pos.left)}px`;
+    pill.style.maxWidth = `${Math.round(pos.maxWidth)}px`;
+    pill.classList.toggle("compact", pos.compact);
+    if (snap) {
+      void pill.offsetWidth; // flush styles so the jump isn't animated
+      pill.classList.remove("no-motion");
+    }
+  };
+
+  const reposition = () => {
+    const context = pageContext();
+    if (!context) return;
+    const snap = !pill.classList.contains("shown");
+    applyPosition(measureAnchor(context) ?? fallbackPos(context), snap);
+  };
+
+  let raf = null;
+  const rafReposition = () => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = null;
+      reposition();
+    });
+  };
+
+  // Late-rendering panels and kiosk-mode styles land after the URL
+  // changes; a short re-measure burst catches them.
+  let burst = [];
+  const clearBurst = () => {
+    burst.forEach(clearTimeout);
+    burst = [];
+  };
+  const startBurst = () => {
+    clearBurst();
+    burst = [100, 300, 700, 1500].map((ms) => setTimeout(reposition, ms));
+  };
+
+  // Safety net for anything the observers miss (e.g. stale ResizeObserver
+  // targets after kiosk swaps hui-root); the <1px skip makes it free.
+  let settle = null;
+  const stopSettle = () => {
+    if (settle) {
+      clearInterval(settle);
+      settle = null;
+    }
   };
 
   const stopTimer = () => {
@@ -1001,10 +1233,12 @@ function initAccessPill() {
       ? hearthlightSwitchIds(hass).filter((id) => hass.states[id]?.state === "on")
       : [];
     activeCount = active.length;
-    if (!activeCount || !onLovelacePanel()) {
+    if (!activeCount || !pageContext()) {
       pill.classList.remove("shown");
       expires = null;
       stopTimer();
+      stopSettle();
+      clearBurst();
       return;
     }
     const expiries = active
@@ -1012,13 +1246,17 @@ function initAccessPill() {
       .filter((t) => !Number.isNaN(t));
     expires = expiries.length ? Math.max(...expiries) : null;
     tick();
+    reposition();
     pill.classList.add("shown");
+    startBurst();
+    if (!settle) settle = setInterval(reposition, 2000);
     if (expires && !timer) timer = setInterval(tick, 1000);
     if (!expires) stopTimer();
   };
 
   window.addEventListener("location-changed", update);
   window.addEventListener("popstate", update);
+  window.addEventListener("resize", rafReposition);
   // Re-check on switch state changes. The deferral lets the main hass
   // object absorb the same event first (subscription order is unordered).
   window.hassConnection?.then(({ conn }) => {
